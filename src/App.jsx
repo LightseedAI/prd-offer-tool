@@ -30,6 +30,8 @@ const CONST_FIREBASE_CONFIG = {
 const DEFAULT_LOGO_URL = "https://prdburleighheads.com.au/wp-content/uploads/2025/01/PRD-B.T-LAND-RED-PNG.png";
 
 const DEFAULT_PLACEHOLDERS = {
+  purchasePrice: '',
+  depositAmount: '',
   depositTerms: 'Payable immediately',
   financeDate: '14 days from contract date',
   inspectionDate: '14 days from contract date',
@@ -293,13 +295,12 @@ export default function App() {
         dbRef.current = getFirestore(app);
         console.log("Firebase Connected");
 
-        // A. Fetch Agents
+        // A. Fetch Agents (Firebase only - no duplicates)
         const qAgents = query(collection(dbRef.current, "agents"), orderBy("name"));
         const unsubAgents = onSnapshot(qAgents, (snap) => {
           if(!snap.empty) {
              const loaded = snap.docs.map(d => ({id: d.id, ...d.data()}));
-             // MERGE: Keep default agents for testing, add DB agents to list
-             setAgentsList([...DEFAULT_AGENTS, ...loaded]);
+             setAgentsList(loaded);
           }
         });
 
@@ -568,26 +569,35 @@ export default function App() {
                   
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Type className="w-3 h-3" /> Form Placeholders</h3>
+                    <p className="text-[10px] text-slate-500 mb-2">Leave empty for no placeholder</p>
                     <div className="space-y-2">
                        <div>
+                          <label className="text-[10px] text-slate-500 block">Purchase Price</label>
+                          <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({...p, purchasePrice: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" placeholder="e.g. 1,500,000" />
+                       </div>
+                       <div>
+                          <label className="text-[10px] text-slate-500 block">Initial Deposit</label>
+                          <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositAmount: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" placeholder="e.g. 1,000" />
+                       </div>
+                       <div>
                           <label className="text-[10px] text-slate-500 block">Deposit Terms</label>
-                          <input type="text" value={tempPlaceholders.depositTerms} onChange={(e) => setTempPlaceholders(p => ({...p, depositTerms: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
+                          <input type="text" value={tempPlaceholders.depositTerms || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositTerms: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
                        </div>
                        <div>
                           <label className="text-[10px] text-slate-500 block">Finance Date</label>
-                          <input type="text" value={tempPlaceholders.financeDate} onChange={(e) => setTempPlaceholders(p => ({...p, financeDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
+                          <input type="text" value={tempPlaceholders.financeDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, financeDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
                        </div>
                        <div>
                           <label className="text-[10px] text-slate-500 block">Building & Pest Inspection</label>
-                          <input type="text" value={tempPlaceholders.inspectionDate} onChange={(e) => setTempPlaceholders(p => ({...p, inspectionDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
+                          <input type="text" value={tempPlaceholders.inspectionDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, inspectionDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
                        </div>
                        <div>
                           <label className="text-[10px] text-slate-500 block">Settlement Date</label>
-                          <input type="text" value={tempPlaceholders.settlementDate} onChange={(e) => setTempPlaceholders(p => ({...p, settlementDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
+                          <input type="text" value={tempPlaceholders.settlementDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, settlementDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
                        </div>
                        <div>
                           <label className="text-[10px] text-slate-500 block">Special Conditions</label>
-                          <input type="text" value={tempPlaceholders.specialConditions} onChange={(e) => setTempPlaceholders(p => ({...p, specialConditions: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
+                          <input type="text" value={tempPlaceholders.specialConditions || ''} onChange={(e) => setTempPlaceholders(p => ({...p, specialConditions: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
                        </div>
                     </div>
                   </div>
@@ -731,31 +741,31 @@ export default function App() {
 
           <SectionHeader icon={DollarSign} title="Price & Deposit" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <InputField label="Purchase Price Offer ($)" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder="1,500,000" required />
-            <InputField label="Initial Deposit ($)" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder="1,000" />
-            <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms} />
+            <InputField label="Purchase Price Offer ($)" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required />
+            <InputField label="Initial Deposit ($)" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={placeholders.depositAmount || ''} />
+            <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
           </div>
 
           <SectionHeader icon={Calendar} title="Conditions" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
              <div className="p-4 bg-slate-50 border border-slate-200 rounded">
                 <h3 className="font-bold text-slate-700 mb-3 text-sm">Finance</h3>
-                <InputField label="Finance Date" name="financeDate" value={formData.financeDate} onChange={handleChange} placeholder={placeholders.financeDate} className="mb-3" />
+                <InputField label="Finance Date" name="financeDate" value={formData.financeDate} onChange={handleChange} placeholder={placeholders.financeDate || ''} className="mb-3" />
                 <Checkbox label="Loan Pre-Approved?" name="financePreApproved" checked={formData.financePreApproved} onChange={handleChange} />
              </div>
              <div className="p-4 bg-slate-50 border border-slate-200 rounded">
                 <h3 className="font-bold text-slate-700 mb-3 text-sm">Building & Pest</h3>
-                <InputField label="Inspection Date" name="inspectionDate" value={formData.inspectionDate} onChange={handleChange} placeholder={placeholders.inspectionDate} />
+                <InputField label="Inspection Date" name="inspectionDate" value={formData.inspectionDate} onChange={handleChange} placeholder={placeholders.inspectionDate || ''} />
              </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6">
-             <InputField label="Settlement Date" name="settlementDate" value={formData.settlementDate} onChange={handleChange} placeholder={placeholders.settlementDate} />
+             <InputField label="Settlement Date" name="settlementDate" value={formData.settlementDate} onChange={handleChange} placeholder={placeholders.settlementDate || ''} />
           </div>
 
           <div className="mt-6">
             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Special Conditions</label>
-            <textarea name="specialConditions" value={formData.specialConditions} onChange={handleChange} rows={4} className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 transition-colors" placeholder={placeholders.specialConditions}></textarea>
+            <textarea name="specialConditions" value={formData.specialConditions} onChange={handleChange} rows={4} className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 transition-colors" placeholder={placeholders.specialConditions || ''}></textarea>
           </div>
 
           <div className="mt-12 mb-8 break-inside-avoid">
