@@ -15,19 +15,15 @@ const CONST_GOOGLE_MAPS_KEY = "AIzaSyBZkZwy9O2THIjqA-liZJCPAuoawV0kDvw";
 // 2. n8n Webhook URL (Where the form data is sent)
 const CONST_WEBHOOK_URL = "";
 
-// 3. Firebase Configuration (Paste the raw JSON object inside the quotes or brackets)
-// Example: const CONST_FIREBASE_CONFIG = { apiKey: "AIzaSyASgtk7IbBZbOVDMtGvlZtQWeO0ezgljQc",
-
+// 3. Firebase Configuration
+const CONST_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyASgtk7IbBZbOVDMtGvlZtQWeO0ezgljQc",
   authDomain: "prd-offer-tool.firebaseapp.com",
-
   projectId: "prd-offer-tool",
-
   storageBucket: "prd-offer-tool.firebasestorage.app",
-
   messagingSenderId: "124641181600",
-
-  appId: "1:124641181600:web:89b578ca25243ec89d2ec5" };
-const CONST_FIREBASE_CONFIG = null; 
+  appId: "1:124641181600:web:89b578ca25243ec89d2ec5"
+};
 
 // ==============================================================================
 
