@@ -532,17 +532,20 @@ export default function App() {
             <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />
             <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
           </div>
-          <div className="flex gap-2">
-             <button onClick={() => setShowAgentMode(true)} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
-              <QrCode className="w-4 h-4" /> Agent Area
-            </button>
-             <button onClick={() => setShowSettings(!showSettings)} className="p-2 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white">
-              <Settings className="w-5 h-5" />
-            </button>
-            <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
-              <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
-            </button>
-          </div>
+          {/* Only show controls for agents (not prefilled/buyer view) */}
+          {!isPrefilled && (
+            <div className="flex gap-2">
+               <button onClick={() => setShowAgentMode(true)} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
+                <QrCode className="w-4 h-4" /> Agent Area
+              </button>
+               <button onClick={() => setShowSettings(!showSettings)} className="p-2 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white">
+                <Settings className="w-5 h-5" />
+              </button>
+              <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
+                <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
+              </button>
+            </div>
+          )}
         </div>
         
         {/* SETTINGS DRAWER (Simplified for Agents) */}
@@ -703,7 +706,20 @@ export default function App() {
         {submitStatus === 'success' && (
           <div className="mx-8 mt-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 print:hidden">
             <div className="bg-green-100 p-2 rounded-full text-green-600"><Check className="w-5 h-5" /></div>
-            <div><h3 className="font-bold text-green-800">Offer Generated Successfully!</h3><button onClick={() => window.location.reload()} className="mt-1 text-xs font-bold text-green-800 hover:text-green-900 underline">Create New Offer</button></div>
+            <div>
+              <h3 className="font-bold text-green-800">Offer Submitted Successfully!</h3>
+              <p className="text-sm text-green-700 mt-1">Your offer has been sent to the agent.</p>
+              <div className="flex gap-3 mt-2">
+                <button onClick={() => window.print()} className="text-xs font-bold text-green-800 hover:text-green-900 underline flex items-center gap-1">
+                  <Printer className="w-3 h-3" /> Print a Copy
+                </button>
+                {!isPrefilled && (
+                  <button onClick={() => window.location.reload()} className="text-xs font-bold text-green-800 hover:text-green-900 underline">
+                    Create New Offer
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
