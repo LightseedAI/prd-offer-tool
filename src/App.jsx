@@ -307,14 +307,17 @@ export default function App() {
               // Use current logo if set, otherwise use default
               setLogoUrl(data.logoUrl || data.defaultLogoUrl);
               setTempLogoUrl(data.logoUrl || data.defaultLogoUrl);
-            } else {
+            } else if (storageRef.current) {
               // First run - upload default logo to Firebase Storage
               try {
+                console.log("Fetching default logo...");
                 const response = await fetch(ORIGINAL_DEFAULT_LOGO);
                 const blob = await response.blob();
+                console.log("Uploading default logo to Firebase Storage...");
                 const fileRef = ref(storageRef.current, 'logos/default_logo.png');
                 await uploadBytes(fileRef, blob);
                 const firebaseLogoUrl = await getDownloadURL(fileRef);
+                console.log("Default logo uploaded:", firebaseLogoUrl);
                 
                 // Save to settings
                 await setDoc(docRef, { 
@@ -333,10 +336,19 @@ export default function App() {
                 setDefaultLogoUrl(firebaseLogoUrl);
                 setLogoUrl(firebaseLogoUrl);
                 setTempLogoUrl(firebaseLogoUrl);
-                console.log("Default logo uploaded to Firebase Storage");
+                console.log("Default logo setup complete");
               } catch (e) {
                 console.error("Failed to upload default logo:", e);
+                // Fall back to external URL
+                setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
+                setLogoUrl(ORIGINAL_DEFAULT_LOGO);
+                setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
               }
+            } else {
+              // Storage not available, use external URL
+              setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
+              setLogoUrl(ORIGINAL_DEFAULT_LOGO);
+              setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
             }
             
             if (data.logoUrl) {
@@ -347,9 +359,10 @@ export default function App() {
                setPlaceholders(prev => ({...prev, ...data.placeholders}));
                setTempPlaceholders(prev => ({...prev, ...data.placeholders}));
             }
-          } else {
+          } else if (storageRef.current) {
             // No settings doc exists - create one with default logo
             try {
+              console.log("Creating initial settings with default logo...");
               const response = await fetch(ORIGINAL_DEFAULT_LOGO);
               const blob = await response.blob();
               const fileRef = ref(storageRef.current, 'logos/default_logo.png');
@@ -373,10 +386,19 @@ export default function App() {
               setDefaultLogoUrl(firebaseLogoUrl);
               setLogoUrl(firebaseLogoUrl);
               setTempLogoUrl(firebaseLogoUrl);
-              console.log("Initial settings created with default logo");
+              console.log("Initial settings created");
             } catch (e) {
               console.error("Failed to create initial settings:", e);
+              // Fall back to external URL
+              setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
+              setLogoUrl(ORIGINAL_DEFAULT_LOGO);
+              setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
             }
+          } else {
+            // Storage not available
+            setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
+            setLogoUrl(ORIGINAL_DEFAULT_LOGO);
+            setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
           }
         });
 
@@ -715,18 +737,39 @@ export default function App() {
   };
 
   const handleLogoUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !storageRef.current || !dbRef.current) return;
+    const file = e.target.files?.[0];
+    if (!file) {
+      console.log("No file selected");
+      return;
+    }
+    
+    if (!storageRef.current) {
+      alert("Firebase Storage not connected. Please refresh the page.");
+      return;
+    }
+    
+    if (!dbRef.current) {
+      alert("Firebase Database not connected. Please refresh the page.");
+      return;
+    }
     
     const logoName = newLogoName.trim() || `Logo ${new Date().toLocaleDateString()}`;
     
     setIsUploadingLogo(true);
+    
     try {
+      console.log("Starting upload for:", file.name);
       const fileRef = ref(storageRef.current, `logos/${Date.now()}_${file.name}`);
+      
+      console.log("Uploading to Firebase Storage...");
       await uploadBytes(fileRef, file);
+      
+      console.log("Getting download URL...");
       const url = await getDownloadURL(fileRef);
+      console.log("URL obtained:", url);
       
       // Add to logo gallery
+      console.log("Adding to gallery...");
       await addDoc(collection(dbRef.current, "logos"), {
         name: logoName,
         url: url,
@@ -736,14 +779,16 @@ export default function App() {
       
       setTempLogoUrl(url);
       setNewLogoName('');
+      console.log("Upload complete!");
       alert("Logo uploaded! Select it below and click 'Save Settings' to apply.");
-    } catch (e) {
-      console.error(e);
-      alert("Upload failed. Check console.");
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload failed: " + err.message);
+    } finally {
+      setIsUploadingLogo(false);
+      // Reset file input
+      if (logoInputRef.current) logoInputRef.current.value = '';
     }
-    setIsUploadingLogo(false);
-    // Reset file input
-    if (logoInputRef.current) logoInputRef.current.value = '';
   };
 
   const handleSelectLogo = (url) => {
