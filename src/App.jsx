@@ -254,6 +254,8 @@ export default function App() {
   const [showAgentMode, setShowAgentMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const ADMIN_PASSWORD = "PRD";
   
   // --- Data State ---
   const [isMapsLoaded, setIsMapsLoaded] = useState(false);
@@ -433,6 +435,21 @@ export default function App() {
   // HANDLERS
   // ============================================================
 
+  // Admin Password Check
+  const checkAdminAccess = (callback) => {
+    if (adminUnlocked) {
+      callback();
+      return;
+    }
+    const entered = prompt("Enter admin password:");
+    if (entered === ADMIN_PASSWORD) {
+      setAdminUnlocked(true);
+      callback();
+    } else if (entered !== null) {
+      alert("Incorrect password");
+    }
+  };
+
   // Form Data Helpers
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -563,7 +580,7 @@ export default function App() {
           {/* Only show controls for agents (not prefilled/buyer view) */}
           {!isPrefilled && (
             <div className="flex gap-2">
-               <button onClick={() => {
+               <button onClick={() => checkAdminAccess(() => {
                   // Sync values from main form to Agent Kiosk
                   setAgentModeData({
                     agentName: formData.agentName || '',
@@ -572,10 +589,10 @@ export default function App() {
                   setShortLink('');
                   setQrGenerated(false);
                   setShowAgentMode(true);
-                }} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
+                })} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
                 <QrCode className="w-4 h-4" /> Agent Area
               </button>
-               <button onClick={() => setShowSettings(!showSettings)} className="p-2 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white">
+               <button onClick={() => checkAdminAccess(() => setShowSettings(!showSettings))} className="p-2 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white">
                 <Settings className="w-5 h-5" />
               </button>
               <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
