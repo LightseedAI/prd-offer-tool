@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw } from 'lucide-react';
+import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 // Firebase Imports
 import { initializeApp } from "firebase/app";
@@ -259,6 +261,10 @@ export default function App() {
   const dbRef = useRef(null);
   const storageRef = useRef(null);
   const logoInputRef = useRef(null);
+  const formContainerRef = useRef(null);
+
+  // --- Validation State ---
+  const [validationErrors, setValidationErrors] = useState([]);
 
   // ============================================================
   // INITIALIZATION
@@ -416,6 +422,9 @@ export default function App() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    // Clear validation errors when user starts editing
+    if (validationErrors.length > 0) setValidationErrors([]);
+    
     if (name === 'purchasePrice' || name === 'depositAmount') {
       setFormData(prev => ({ ...prev, [name]: formatCurrency(value) }));
     } else {
@@ -424,35 +433,167 @@ export default function App() {
   };
 
   const handleAgentChange = (e) => {
+    if (validationErrors.length > 0) setValidationErrors([]);
     const selected = agentsList.find(a => a.name === e.target.value);
     setFormData(prev => ({ ...prev, agentName: e.target.value, agentEmail: selected ? selected.email : '' }));
   };
 
-  const handleSignatureEnd = (field, dataUrl) => setFormData(prev => ({ ...prev, [field]: dataUrl }));
+  const handleSignatureEnd = (field, dataUrl) => {
+    if (validationErrors.length > 0) setValidationErrors([]);
+    setFormData(prev => ({ ...prev, [field]: dataUrl }));
+  };
   const handleSignatureClear = (field) => setFormData(prev => ({ ...prev, [field]: null }));
   
   const handlePrint = () => window.print();
 
+  const validateForm = () => {
+    const errors = [];
+    
+    // Required fields
+    if (!formData.agentName) errors.push('Selling Agent');
+    if (!formData.propertyAddress) errors.push('Property Address');
+    if (!formData.buyerName1) errors.push('Buyer Full Name (1)');
+    if (!formData.buyerAddress) errors.push('Buyer Postal Address');
+    if (!formData.buyerPhone) errors.push('Buyer Phone');
+    if (!formData.buyerEmail) errors.push('Buyer Email');
+    if (!formData.purchasePrice) errors.push('Purchase Price');
+    
+    // Deposit - either entered or has placeholder
+    if (!formData.depositAmount && !placeholders.depositAmount && !placeholders.depositPercent) {
+      errors.push('Initial Deposit');
+    }
+    
+    // Dates - either entered or has placeholder
+    if (!formData.financeDate && !placeholders.financeDate) errors.push('Finance Date');
+    if (!formData.inspectionDate && !placeholders.inspectionDate) errors.push('Inspection Date');
+    if (!formData.settlementDate && !placeholders.settlementDate) errors.push('Settlement Date');
+    
+    // Signature required
+    if (!formData.signature) errors.push('Buyer 1 Signature');
+    
+    // If there's a second buyer, they need to sign too
+    if (formData.buyerName2 && !formData.signature2) {
+      errors.push('Buyer 2 Signature');
+    }
+    
+    return errors;
+  };
+
+  const generatePDF = async () => {
+    if (!formContainerRef.current) return null;
+    
+    try {
+      // Temporarily show print styles for PDF capture
+      const container = formContainerRef.current;
+      
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: container.scrollWidth,
+        height: container.scrollHeight
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 0;
+      
+      // Calculate if we need multiple pages
+      const scaledHeight = imgHeight * ratio;
+      const pageHeight = pdfHeight;
+      let heightLeft = scaledHeight;
+      let position = 0;
+      
+      // First page
+      pdf.addImage(imgData, 'PNG', imgX, position, imgWidth * ratio, scaledHeight);
+      heightLeft -= pageHeight;
+      
+      // Additional pages if needed
+      while (heightLeft > 0) {
+        position = heightLeft - scaledHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', imgX, position, imgWidth * ratio, scaledHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Return as base64
+      return pdf.output('datauristring').split(',')[1];
+    } catch (e) {
+      console.error('PDF generation error:', e);
+      return null;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setValidationErrors([]);
+    
+    // Validate form
+    const errors = validateForm();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    
     setIsSubmitting(true);
+    
+    // Generate PDF
+    let pdfBase64 = null;
+    try {
+      pdfBase64 = await generatePDF();
+    } catch (e) {
+      console.error('PDF Error:', e);
+    }
+    
+    // Prepare payload with all form data and PDF
     const payload = { 
-      ...formData, 
+      ...formData,
+      // Use placeholders if fields are empty
+      depositAmount: formData.depositAmount || (placeholders.depositPercent && formData.purchasePrice 
+        ? calculateDeposit(formData.purchasePrice, placeholders.depositPercent) 
+        : placeholders.depositAmount) || '',
       depositTerms: formData.depositTerms || placeholders.depositTerms,
       financeDate: formData.financeDate || placeholders.financeDate,
       inspectionDate: formData.inspectionDate || placeholders.inspectionDate,
       settlementDate: formData.settlementDate || placeholders.settlementDate,
-      submittedAt: new Date().toISOString() 
+      submittedAt: new Date().toISOString(),
+      // Include PDF as base64
+      pdfBase64: pdfBase64,
+      pdfFilename: `Offer_${formData.propertyAddress.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${new Date().toISOString().split('T')[0]}.pdf`
     };
 
     if (webhookUrl) {
       try {
-        const res = await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (res.ok) { setSubmitStatus('success'); }
+        const res = await fetch(webhookUrl, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(payload) 
+        });
+        if (res.ok) { 
+          setSubmitStatus('success'); 
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         else { setSubmitStatus('error'); alert("Failed to send."); }
       } catch (e) { setSubmitStatus('error'); alert("Network Error"); }
     } else {
-      setTimeout(() => { setSubmitStatus('success'); window.scrollTo({ top: 0, behavior: 'smooth' }); }, 1000);
+      // Demo mode - just show success
+      setTimeout(() => { 
+        setSubmitStatus('success'); 
+        window.scrollTo({ top: 0, behavior: 'smooth' }); 
+      }, 1000);
     }
     setIsSubmitting(false);
   };
@@ -868,7 +1009,7 @@ export default function App() {
       )}
 
       {/* MAIN FORM */}
-      <div className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
+      <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
         <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
           <div><img src={logoUrl} alt="Logo" className="h-16 w-auto mb-2" /></div>
           <div className="text-right">
@@ -884,6 +1025,23 @@ export default function App() {
              )}
           </div>
         </header>
+
+        {/* VALIDATION ERRORS */}
+        {validationErrors.length > 0 && (
+          <div className="mx-8 mt-6 p-4 bg-red-50 border border-red-200 rounded-lg print:hidden">
+            <div className="flex items-start gap-3">
+              <div className="bg-red-100 p-2 rounded-full text-red-600"><AlertCircle className="w-5 h-5" /></div>
+              <div>
+                <h3 className="font-bold text-red-800">Please complete the following required fields:</h3>
+                <ul className="text-sm text-red-700 mt-2 list-disc list-inside">
+                  {validationErrors.map((error, i) => (
+                    <li key={i}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {submitStatus === 'success' && (
           <div className="mx-8 mt-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 print:hidden">
