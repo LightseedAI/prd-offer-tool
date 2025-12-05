@@ -577,11 +577,13 @@ export default function App() {
 
   const getDepositPlaceholder = () => {
     if (placeholders.depositAmount) return placeholders.depositAmount;
-    if (placeholders.depositPercent && formData.purchasePrice) {
-      const calc = calculateDeposit(formData.purchasePrice, placeholders.depositPercent);
-      return calc || '';
+    if (placeholders.depositPercent) {
+      if (formData.purchasePrice) {
+        const calc = calculateDeposit(formData.purchasePrice, placeholders.depositPercent);
+        if (calc) return `${calc} (${placeholders.depositPercent}% of purchase price)`;
+      }
+      return `Enter purchase price to calculate ${placeholders.depositPercent}%`;
     }
-    if (placeholders.depositPercent) return `${placeholders.depositPercent}% of price`;
     return '';
   };
 
