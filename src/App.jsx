@@ -275,6 +275,7 @@ export default function App() {
   const [shortLink, setShortLink] = useState('');
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [qrGenerated, setQrGenerated] = useState(false);
+  const [agentModeReady, setAgentModeReady] = useState(false);
   
   // --- Refs ---
   const addressInputRef = useRef(null);
@@ -367,8 +368,35 @@ export default function App() {
   }, [isMapsLoaded, mapsError, isPrefilled]);
 
   useEffect(() => {
-    if (showAgentMode) initAutocomplete(agentAddressInputRef, agentAutocompleteInstance, (addr) => { setAgentModeData(prev => ({ ...prev, propertyAddress: addr })); setShortLink(''); setQrGenerated(false); });
-  }, [showAgentMode, isMapsLoaded]);
+    if (showAgentMode && isMapsLoaded && !mapsError) {
+      // Reset the instance so it can be re-initialized
+      agentAutocompleteInstance.current = null;
+      setAgentModeReady(false);
+      
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        if (agentAddressInputRef.current && !agentAutocompleteInstance.current) {
+          try {
+            const ac = new window.google.maps.places.Autocomplete(agentAddressInputRef.current, {
+              types: ['address'], componentRestrictions: { country: 'au' }, fields: ['formatted_address']
+            });
+            agentAutocompleteInstance.current = ac;
+            ac.addListener('place_changed', () => {
+              const place = ac.getPlace();
+              if (place.formatted_address) {
+                setAgentModeData(prev => ({ ...prev, propertyAddress: place.formatted_address }));
+                setShortLink('');
+                setQrGenerated(false);
+              }
+            });
+            setAgentModeReady(true);
+          } catch(e) { console.error("Agent Kiosk autocomplete error:", e); }
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showAgentMode, isMapsLoaded, mapsError]);
 
   // 4. Load URL Params (Shortlink or Legacy)
   useEffect(() => {
@@ -535,7 +563,16 @@ export default function App() {
           {/* Only show controls for agents (not prefilled/buyer view) */}
           {!isPrefilled && (
             <div className="flex gap-2">
-               <button onClick={() => setShowAgentMode(true)} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
+               <button onClick={() => {
+                  // Sync values from main form to Agent Kiosk
+                  setAgentModeData({
+                    agentName: formData.agentName || '',
+                    propertyAddress: formData.propertyAddress || ''
+                  });
+                  setShortLink('');
+                  setQrGenerated(false);
+                  setShowAgentMode(true);
+                }} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
                 <QrCode className="w-4 h-4" /> Agent Area
               </button>
                <button onClick={() => setShowSettings(!showSettings)} className="p-2 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white">
@@ -643,7 +680,11 @@ export default function App() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
             <div className="bg-slate-900 p-4 flex justify-between items-center">
               <h2 className="text-white font-bold text-lg flex items-center gap-2"><QrCode className="w-5 h-5 text-red-500" /> Agent Kiosk</h2>
-              <button onClick={() => setShowAgentMode(false)} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
+              <button onClick={() => { 
+                setShowAgentMode(false); 
+                agentAutocompleteInstance.current = null;
+                setAgentModeReady(false);
+              }} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                <div className="space-y-4">
@@ -656,8 +697,11 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Address</label>
-                    <input ref={agentAddressInputRef} type="text" className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Search address..." value={agentModeData.propertyAddress} onChange={(e) => { setAgentModeData(p => ({...p, propertyAddress: e.target.value})); setQrGenerated(false); }} />
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1 flex items-center gap-1">
+                      Address
+                      {agentModeReady && <MapPin className="w-3 h-3 text-green-500" />}
+                    </label>
+                    <input ref={agentAddressInputRef} type="text" className="w-full border border-slate-300 rounded p-2 text-sm" placeholder={agentModeReady ? "Start typing address..." : "Loading..."} value={agentModeData.propertyAddress} onChange={(e) => { setAgentModeData(p => ({...p, propertyAddress: e.target.value})); setQrGenerated(false); }} />
                   </div>
                   <button onClick={generateSmartLink} disabled={!agentModeData.agentName || !agentModeData.propertyAddress || isGeneratingLink} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded text-sm font-bold mt-2 flex items-center justify-center gap-2">
                     {isGeneratingLink ? <Loader className="w-4 h-4 animate-spin"/> : <><QrCode className="w-4 h-4"/> Generate QR</>}
