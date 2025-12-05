@@ -25,7 +25,7 @@ const CONST_FIREBASE_CONFIG = {
 
 // ==============================================================================
 
-const DEFAULT_LOGO_URL = "https://prdburleighheads.com.au/wp-content/uploads/2025/01/PRD-B.T-LAND-RED-PNG.png";
+const ORIGINAL_DEFAULT_LOGO = "https://prdburleighheads.com.au/wp-content/uploads/2025/01/PRD-B.T-LAND-RED-PNG.png";
 
 const DEFAULT_PLACEHOLDERS = {
   purchasePrice: '',
@@ -229,7 +229,8 @@ export default function App() {
   const [mapsError, setMapsError] = useState(null);
   const [isPrefilled, setIsPrefilled] = useState(false);
   const [agentsList, setAgentsList] = useState(DEFAULT_AGENTS);
-  const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
+  const [logoUrl, setLogoUrl] = useState(ORIGINAL_DEFAULT_LOGO);
+  const [defaultLogoUrl, setDefaultLogoUrl] = useState(ORIGINAL_DEFAULT_LOGO);
   const [placeholders, setPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
 
   // --- Admin UI State ---
@@ -239,6 +240,8 @@ export default function App() {
   const [tempLogoUrl, setTempLogoUrl] = useState('');
   const [tempPlaceholders, setTempPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoGallery, setLogoGallery] = useState([]);
+  const [newLogoName, setNewLogoName] = useState('');
   
   // --- Edit Agent State ---
   const [editingAgent, setEditingAgent] = useState(null);
@@ -286,10 +289,56 @@ export default function App() {
           }
         });
 
+        // Listen for logo gallery
+        const qLogos = query(collection(dbRef.current, "logos"), orderBy("uploadedAt", "desc"));
+        const unsubLogos = onSnapshot(qLogos, (snap) => {
+          const loaded = snap.docs.map(d => ({id: d.id, ...d.data()}));
+          setLogoGallery(loaded);
+        });
+
         const docRef = doc(dbRef.current, "config", "settings");
-        const unsubSettings = onSnapshot(docRef, (docSnap) => {
+        const unsubSettings = onSnapshot(docRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
+            
+            // Check if default logo is stored in Firebase
+            if (data.defaultLogoUrl) {
+              setDefaultLogoUrl(data.defaultLogoUrl);
+              // Use current logo if set, otherwise use default
+              setLogoUrl(data.logoUrl || data.defaultLogoUrl);
+              setTempLogoUrl(data.logoUrl || data.defaultLogoUrl);
+            } else {
+              // First run - upload default logo to Firebase Storage
+              try {
+                const response = await fetch(ORIGINAL_DEFAULT_LOGO);
+                const blob = await response.blob();
+                const fileRef = ref(storageRef.current, 'logos/default_logo.png');
+                await uploadBytes(fileRef, blob);
+                const firebaseLogoUrl = await getDownloadURL(fileRef);
+                
+                // Save to settings
+                await setDoc(docRef, { 
+                  defaultLogoUrl: firebaseLogoUrl,
+                  logoUrl: firebaseLogoUrl 
+                }, { merge: true });
+                
+                // Also add to logo gallery
+                await addDoc(collection(dbRef.current, "logos"), {
+                  name: "Default Logo",
+                  url: firebaseLogoUrl,
+                  isDefault: true,
+                  uploadedAt: new Date().toISOString()
+                });
+                
+                setDefaultLogoUrl(firebaseLogoUrl);
+                setLogoUrl(firebaseLogoUrl);
+                setTempLogoUrl(firebaseLogoUrl);
+                console.log("Default logo uploaded to Firebase Storage");
+              } catch (e) {
+                console.error("Failed to upload default logo:", e);
+              }
+            }
+            
             if (data.logoUrl) {
                setLogoUrl(data.logoUrl);
                setTempLogoUrl(data.logoUrl);
@@ -298,10 +347,40 @@ export default function App() {
                setPlaceholders(prev => ({...prev, ...data.placeholders}));
                setTempPlaceholders(prev => ({...prev, ...data.placeholders}));
             }
+          } else {
+            // No settings doc exists - create one with default logo
+            try {
+              const response = await fetch(ORIGINAL_DEFAULT_LOGO);
+              const blob = await response.blob();
+              const fileRef = ref(storageRef.current, 'logos/default_logo.png');
+              await uploadBytes(fileRef, blob);
+              const firebaseLogoUrl = await getDownloadURL(fileRef);
+              
+              await setDoc(docRef, { 
+                defaultLogoUrl: firebaseLogoUrl,
+                logoUrl: firebaseLogoUrl,
+                placeholders: DEFAULT_PLACEHOLDERS
+              });
+              
+              // Also add to logo gallery
+              await addDoc(collection(dbRef.current, "logos"), {
+                name: "Default Logo",
+                url: firebaseLogoUrl,
+                isDefault: true,
+                uploadedAt: new Date().toISOString()
+              });
+              
+              setDefaultLogoUrl(firebaseLogoUrl);
+              setLogoUrl(firebaseLogoUrl);
+              setTempLogoUrl(firebaseLogoUrl);
+              console.log("Initial settings created with default logo");
+            } catch (e) {
+              console.error("Failed to create initial settings:", e);
+            }
           }
         });
 
-        return () => { unsubAgents(); unsubSettings(); };
+        return () => { unsubAgents(); unsubSettings(); unsubLogos(); };
       } catch(e) {
         console.error("Firebase Init Error:", e);
       }
@@ -637,24 +716,53 @@ export default function App() {
 
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !storageRef.current) return;
+    if (!file || !storageRef.current || !dbRef.current) return;
+    
+    const logoName = newLogoName.trim() || `Logo ${new Date().toLocaleDateString()}`;
     
     setIsUploadingLogo(true);
     try {
       const fileRef = ref(storageRef.current, `logos/${Date.now()}_${file.name}`);
       await uploadBytes(fileRef, file);
       const url = await getDownloadURL(fileRef);
+      
+      // Add to logo gallery
+      await addDoc(collection(dbRef.current, "logos"), {
+        name: logoName,
+        url: url,
+        isDefault: false,
+        uploadedAt: new Date().toISOString()
+      });
+      
       setTempLogoUrl(url);
-      alert("Logo uploaded! Click 'Save Settings' to apply.");
+      setNewLogoName('');
+      alert("Logo uploaded! Select it below and click 'Save Settings' to apply.");
     } catch (e) {
       console.error(e);
       alert("Upload failed. Check console.");
     }
     setIsUploadingLogo(false);
+    // Reset file input
+    if (logoInputRef.current) logoInputRef.current.value = '';
   };
 
-  const handleResetLogo = () => {
-    setTempLogoUrl(DEFAULT_LOGO_URL);
+  const handleSelectLogo = (url) => {
+    setTempLogoUrl(url);
+  };
+
+  const handleDeleteLogo = async (logoId, isDefault) => {
+    if (isDefault) {
+      alert("Cannot delete the default logo.");
+      return;
+    }
+    if (!window.confirm("Delete this logo?")) return;
+    
+    try {
+      await deleteDoc(doc(dbRef.current, "logos", logoId));
+    } catch (e) {
+      console.error(e);
+      alert("Delete failed.");
+    }
   };
 
   const handleAddAgent = async () => {
@@ -852,22 +960,78 @@ export default function App() {
                 <div className="space-y-6">
                   <div>
                     <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo</h3>
-                    <div className="flex items-start gap-4">
-                      <div className="w-32 h-16 bg-slate-100 border border-slate-200 rounded flex items-center justify-center p-2">
-                        <img src={tempLogoUrl || DEFAULT_LOGO_URL} alt="Current Logo" className="max-h-full max-w-full object-contain" />
+                    
+                    {/* Current Logo Preview */}
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className="w-32 h-16 bg-slate-100 border-2 border-red-500 rounded flex items-center justify-center p-2">
+                        <img src={tempLogoUrl || defaultLogoUrl} alt="Current Logo" className="max-h-full max-w-full object-contain" />
                       </div>
-                      <div className="flex-1 space-y-2">
-                        <input type="text" value={tempLogoUrl} onChange={(e) => setTempLogoUrl(e.target.value)} className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Logo URL..." />
-                        <div className="flex gap-2">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-700 mb-1">Currently Selected</p>
+                        <p className="text-xs text-slate-500">Click a logo below to select it, then Save Settings.</p>
+                      </div>
+                    </div>
+                    
+                    {/* Logo Gallery */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                      <p className="text-xs font-bold text-slate-600 mb-2">Available Logos</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-40 overflow-y-auto">
+                        {logoGallery.map((logo) => (
+                          <div 
+                            key={logo.id} 
+                            className={`relative group cursor-pointer rounded border-2 p-1 transition-all ${
+                              tempLogoUrl === logo.url 
+                                ? 'border-red-500 bg-red-50' 
+                                : 'border-slate-200 hover:border-slate-400 bg-white'
+                            }`}
+                            onClick={() => handleSelectLogo(logo.url)}
+                          >
+                            <div className="h-10 flex items-center justify-center">
+                              <img src={logo.url} alt={logo.name} className="max-h-full max-w-full object-contain" />
+                            </div>
+                            <p className="text-[10px] text-slate-500 truncate text-center mt-1">{logo.name}</p>
+                            {tempLogoUrl === logo.url && (
+                              <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5">
+                                <Check className="w-2 h-2 text-white" />
+                              </div>
+                            )}
+                            {!logo.isDefault && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDeleteLogo(logo.id, logo.isDefault); }}
+                                className="absolute -top-1 -left-1 bg-white border border-slate-300 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:border-red-300"
+                              >
+                                <X className="w-2 h-2 text-red-500" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Upload New Logo */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1"><Plus className="w-3 h-3" /> Upload New Logo</p>
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="text-xs text-slate-500 block mb-1">Logo Name</label>
+                          <input 
+                            type="text" 
+                            value={newLogoName} 
+                            onChange={(e) => setNewLogoName(e.target.value)} 
+                            className="w-full border border-slate-300 rounded p-1.5 text-sm" 
+                            placeholder="e.g. Christmas 2025" 
+                          />
+                        </div>
+                        <div>
                           <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                          <button onClick={() => logoInputRef.current?.click()} disabled={isUploadingLogo} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold">
+                          <button 
+                            onClick={() => logoInputRef.current?.click()} 
+                            disabled={isUploadingLogo} 
+                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold"
+                          >
                             {isUploadingLogo ? <Loader className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Upload
                           </button>
-                          <button onClick={handleResetLogo} className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold">
-                            <RotateCcw className="w-3 h-3" /> Default
-                          </button>
                         </div>
-                        <p className="text-xs text-slate-500">Upload a seasonal logo (e.g. Christmas) or reset to default.</p>
                       </div>
                     </div>
                   </div>
