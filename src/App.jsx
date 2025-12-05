@@ -6,7 +6,6 @@ import { jsPDF } from 'jspdf';
 // Firebase Imports
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ==============================================================================
 // 🔒 ADMIN CONFIGURATION (HARDCODE YOUR KEYS HERE)
@@ -262,7 +261,6 @@ export default function App() {
   const autocompleteInstance = useRef(null);
   const agentAutocompleteInstance = useRef(null);
   const dbRef = useRef(null);
-  const storageRef = useRef(null);
   const logoInputRef = useRef(null);
   const formContainerRef = useRef(null);
 
@@ -278,7 +276,6 @@ export default function App() {
       try {
         const app = initializeApp(firebaseConfig);
         dbRef.current = getFirestore(app);
-        storageRef.current = getStorage(app);
         console.log("Firebase Connected");
 
         const qAgents = query(collection(dbRef.current, "agents"), orderBy("name"));
@@ -293,7 +290,17 @@ export default function App() {
         const qLogos = query(collection(dbRef.current, "logos"), orderBy("uploadedAt", "desc"));
         const unsubLogos = onSnapshot(qLogos, (snap) => {
           const loaded = snap.docs.map(d => ({id: d.id, ...d.data()}));
-          setLogoGallery(loaded);
+          // If no logos exist, add the default
+          if (loaded.length === 0) {
+            addDoc(collection(dbRef.current, "logos"), {
+              name: "Default Logo",
+              url: ORIGINAL_DEFAULT_LOGO,
+              isDefault: true,
+              uploadedAt: new Date().toISOString()
+            });
+          } else {
+            setLogoGallery(loaded);
+          }
         });
 
         const docRef = doc(dbRef.current, "config", "settings");
@@ -301,101 +308,27 @@ export default function App() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             
-            // Check if default logo is stored in Firebase
             if (data.defaultLogoUrl) {
               setDefaultLogoUrl(data.defaultLogoUrl);
-              // Use current logo if set, otherwise use default
-              setLogoUrl(data.logoUrl || data.defaultLogoUrl);
-              setTempLogoUrl(data.logoUrl || data.defaultLogoUrl);
-            } else if (storageRef.current) {
-              // First run - upload default logo to Firebase Storage
-              try {
-                console.log("Fetching default logo...");
-                const response = await fetch(ORIGINAL_DEFAULT_LOGO);
-                const blob = await response.blob();
-                console.log("Uploading default logo to Firebase Storage...");
-                const fileRef = ref(storageRef.current, 'logos/default_logo.png');
-                await uploadBytes(fileRef, blob);
-                const firebaseLogoUrl = await getDownloadURL(fileRef);
-                console.log("Default logo uploaded:", firebaseLogoUrl);
-                
-                // Save to settings
-                await setDoc(docRef, { 
-                  defaultLogoUrl: firebaseLogoUrl,
-                  logoUrl: firebaseLogoUrl 
-                }, { merge: true });
-                
-                // Also add to logo gallery
-                await addDoc(collection(dbRef.current, "logos"), {
-                  name: "Default Logo",
-                  url: firebaseLogoUrl,
-                  isDefault: true,
-                  uploadedAt: new Date().toISOString()
-                });
-                
-                setDefaultLogoUrl(firebaseLogoUrl);
-                setLogoUrl(firebaseLogoUrl);
-                setTempLogoUrl(firebaseLogoUrl);
-                console.log("Default logo setup complete");
-              } catch (e) {
-                console.error("Failed to upload default logo:", e);
-                // Fall back to external URL
-                setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
-                setLogoUrl(ORIGINAL_DEFAULT_LOGO);
-                setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
-              }
-            } else {
-              // Storage not available, use external URL
-              setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
-              setLogoUrl(ORIGINAL_DEFAULT_LOGO);
-              setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
             }
-            
             if (data.logoUrl) {
                setLogoUrl(data.logoUrl);
                setTempLogoUrl(data.logoUrl);
+            } else {
+               setLogoUrl(ORIGINAL_DEFAULT_LOGO);
+               setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
             }
             if (data.placeholders) {
                setPlaceholders(prev => ({...prev, ...data.placeholders}));
                setTempPlaceholders(prev => ({...prev, ...data.placeholders}));
             }
-          } else if (storageRef.current) {
-            // No settings doc exists - create one with default logo
-            try {
-              console.log("Creating initial settings with default logo...");
-              const response = await fetch(ORIGINAL_DEFAULT_LOGO);
-              const blob = await response.blob();
-              const fileRef = ref(storageRef.current, 'logos/default_logo.png');
-              await uploadBytes(fileRef, blob);
-              const firebaseLogoUrl = await getDownloadURL(fileRef);
-              
-              await setDoc(docRef, { 
-                defaultLogoUrl: firebaseLogoUrl,
-                logoUrl: firebaseLogoUrl,
-                placeholders: DEFAULT_PLACEHOLDERS
-              });
-              
-              // Also add to logo gallery
-              await addDoc(collection(dbRef.current, "logos"), {
-                name: "Default Logo",
-                url: firebaseLogoUrl,
-                isDefault: true,
-                uploadedAt: new Date().toISOString()
-              });
-              
-              setDefaultLogoUrl(firebaseLogoUrl);
-              setLogoUrl(firebaseLogoUrl);
-              setTempLogoUrl(firebaseLogoUrl);
-              console.log("Initial settings created");
-            } catch (e) {
-              console.error("Failed to create initial settings:", e);
-              // Fall back to external URL
-              setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
-              setLogoUrl(ORIGINAL_DEFAULT_LOGO);
-              setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
-            }
           } else {
-            // Storage not available
+            // No settings doc exists - create one with default logo
+            await setDoc(docRef, { 
+              defaultLogoUrl: ORIGINAL_DEFAULT_LOGO,
+              logoUrl: ORIGINAL_DEFAULT_LOGO,
+              placeholders: DEFAULT_PLACEHOLDERS
+            });
             setDefaultLogoUrl(ORIGINAL_DEFAULT_LOGO);
             setLogoUrl(ORIGINAL_DEFAULT_LOGO);
             setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
@@ -743,13 +676,14 @@ export default function App() {
       return;
     }
     
-    if (!storageRef.current) {
-      alert("Firebase Storage not connected. Please refresh the page.");
+    if (!dbRef.current) {
+      alert("Firebase Database not connected. Please refresh the page.");
       return;
     }
     
-    if (!dbRef.current) {
-      alert("Firebase Database not connected. Please refresh the page.");
+    // Check file size (max 800KB for Firestore)
+    if (file.size > 800000) {
+      alert("Logo file is too large. Please use an image under 800KB.");
       return;
     }
     
@@ -758,26 +692,27 @@ export default function App() {
     setIsUploadingLogo(true);
     
     try {
-      console.log("Starting upload for:", file.name);
-      const fileRef = ref(storageRef.current, `logos/${Date.now()}_${file.name}`);
+      console.log("Converting to base64:", file.name);
       
-      console.log("Uploading to Firebase Storage...");
-      await uploadBytes(fileRef, file);
+      // Convert file to base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
       
-      console.log("Getting download URL...");
-      const url = await getDownloadURL(fileRef);
-      console.log("URL obtained:", url);
-      
-      // Add to logo gallery
       console.log("Adding to gallery...");
+      
+      // Add to logo gallery (storing base64 directly)
       await addDoc(collection(dbRef.current, "logos"), {
         name: logoName,
-        url: url,
+        url: base64,
         isDefault: false,
         uploadedAt: new Date().toISOString()
       });
       
-      setTempLogoUrl(url);
+      setTempLogoUrl(base64);
       setNewLogoName('');
       console.log("Upload complete!");
       alert("Logo uploaded! Select it below and click 'Save Settings' to apply.");
