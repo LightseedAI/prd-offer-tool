@@ -1,21 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent } from 'lucide-react';
+import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw } from 'lucide-react';
 
 // Firebase Imports
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ==============================================================================
 // 🔒 ADMIN CONFIGURATION (HARDCODE YOUR KEYS HERE)
 // ==============================================================================
 
-// 1. Google Maps API Key (Enable "Places API" & "Maps JS API")
 const CONST_GOOGLE_MAPS_KEY = "AIzaSyBZkZwy9O2THIjqA-liZJCPAuoawV0kDvw"; 
-
-// 2. n8n Webhook URL (Where the form data is sent)
 const CONST_WEBHOOK_URL = "";
-
-// 3. Firebase Configuration
 const CONST_FIREBASE_CONFIG = {
   apiKey: "AIzaSyASgtk7IbBZbOVDMtGvlZtQWeO0ezgljQc",
   authDomain: "prd-offer-tool.firebaseapp.com",
@@ -32,7 +28,7 @@ const DEFAULT_LOGO_URL = "https://prdburleighheads.com.au/wp-content/uploads/202
 const DEFAULT_PLACEHOLDERS = {
   purchasePrice: '',
   depositAmount: '',
-  depositPercent: '', // NEW: percentage option
+  depositPercent: '',
   depositTerms: 'Payable immediately',
   financeDate: '14 days from contract date',
   inspectionDate: '14 days from contract date',
@@ -41,29 +37,7 @@ const DEFAULT_PLACEHOLDERS = {
 };
 
 const DEFAULT_AGENTS = [
-  { name: 'General Office', email: 'admin@prdburleighheads.com.au' },
-  { name: 'Adrian Sechtig', email: 'adrian@prdburleighheads.com.au' },
-  { name: 'Alex Kennedy', email: 'alex@prdburleighheads.com.au' },
-  { name: 'Ben Fields', email: 'ben@prdburleighheads.com.au' },
-  { name: 'Ben Snell', email: 'bens@prdburleighheads.com.au' },
-  { name: 'Braiden Smith', email: 'braiden@prdburleighheads.com.au' },
-  { name: 'Bronte Hodgins', email: 'bronte@prdburleighheads.com.au' },
-  { name: 'Caitlin Gall', email: 'caitlin@prdburleighheads.com.au' },
-  { name: 'Callum Fitzgerald', email: 'callum@prdburleighheads.com.au' },
-  { name: 'Dean Wildbore', email: 'dean@prdburleighheads.com.au' },
-  { name: 'Ellen Nicholl', email: 'ellen@prdburleighheads.com.au' },
-  { name: 'Freddie Tehle', email: 'freddie@prdburleighheads.com.au' },
-  { name: 'Grace Sullivan', email: 'grace@prdburleighheads.com.au' },
-  { name: 'Jade Dearlove', email: 'jade@prdburleighheads.com.au' },
-  { name: 'Jemma Psaila', email: 'jemma@prdburleighheads.com.au' },
-  { name: 'Jessie Leeming', email: 'jessie@prdburleighheads.com.au' },
-  { name: 'John Fischer', email: 'john@prdburleighheads.com.au' },
-  { name: 'Luke Wright', email: 'luke@prdburleighheads.com.au' },
-  { name: 'Mark Shinners', email: 'mark@prdburleighheads.com.au' },
-  { name: 'Paddy Quinn', email: 'paddy@prdburleighheads.com.au' },
-  { name: 'Paula Dunford', email: 'paula@prdburleighheads.com.au' },
-  { name: 'Shelley Watkins', email: 'shelley@prdburleighheads.com.au' },
-  { name: 'Talitha Jose', email: 'talitha@prdburleighheads.com.au' }
+  { name: 'General Office', email: 'admin@prdburleighheads.com.au' }
 ];
 
 // --- Helper: Calculate deposit from percentage ---
@@ -72,6 +46,13 @@ const calculateDeposit = (price, percent) => {
   const numPercent = parseFloat(percent);
   if (isNaN(numPrice) || isNaN(numPercent)) return '';
   return Math.round(numPrice * (numPercent / 100)).toLocaleString();
+};
+
+// --- Helper: Format currency ---
+const formatCurrency = (value) => {
+  const num = String(value).replace(/[^0-9]/g, '');
+  if (!num) return '';
+  return parseInt(num).toLocaleString();
 };
 
 // --- Components ---
@@ -83,28 +64,35 @@ const SectionHeader = ({ icon: Icon, title }) => (
   </div>
 );
 
-const InputField = ({ label, name, type = "text", value, onChange, placeholder, className = "", required = false, inputRef, icon: Icon, readOnly = false }) => (
+const InputField = ({ label, name, type = "text", value, onChange, placeholder, className = "", required = false, inputRef, icon: Icon, readOnly = false, prefix }) => (
   <div className={`flex flex-col ${className}`}>
     <label className="text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
         {label} {required && <span className="text-red-500">*</span>}
         {Icon && <Icon className="w-3 h-3 text-slate-400" />}
     </label>
-    <input
-      ref={inputRef}
-      type={type}
-      name={name}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      readOnly={readOnly}
-      className={`border rounded p-2 text-sm focus:outline-none transition-colors ${
-        readOnly 
-          ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed' 
-          : 'border-slate-300 focus:ring-2 focus:ring-red-600'
-      }`}
-      autoComplete={name === "propertyAddress" ? "off" : "on"}
-      id={name} 
-    />
+    <div className="relative">
+      {prefix && (
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">{prefix}</span>
+      )}
+      <input
+        ref={inputRef}
+        type={type}
+        name={name}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        readOnly={readOnly}
+        className={`border rounded p-2 text-sm focus:outline-none transition-colors w-full ${
+          prefix ? 'pl-7' : ''
+        } ${
+          readOnly 
+            ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed' 
+            : 'border-slate-300 focus:ring-2 focus:ring-red-600'
+        }`}
+        autoComplete={name === "propertyAddress" ? "off" : "on"}
+        id={name} 
+      />
+    </div>
   </div>
 );
 
@@ -139,7 +127,6 @@ const SignaturePad = ({ onEnd, onClear, signatureData }) => {
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX || e.touches[0].clientX) - rect.left;
     const y = (e.clientY || e.touches[0].clientY) - rect.top;
-    
     ctx.beginPath();
     ctx.moveTo(x, y);
     setIsDrawing(true);
@@ -152,7 +139,6 @@ const SignaturePad = ({ onEnd, onClear, signatureData }) => {
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX || e.touches[0].clientX) - rect.left;
     const y = (e.clientY || e.touches[0].clientY) - rect.top;
-
     ctx.lineTo(x, y);
     ctx.stroke();
   };
@@ -187,12 +173,7 @@ const SignaturePad = ({ onEnd, onClear, signatureData }) => {
         onTouchMove={draw}
         onTouchEnd={endDrawing}
       />
-      <button 
-        type="button"
-        onClick={clear}
-        className="absolute top-2 right-2 p-1 bg-white shadow rounded hover:text-red-600 text-slate-500"
-        title="Clear Signature"
-      >
+      <button type="button" onClick={clear} className="absolute top-2 right-2 p-1 bg-white shadow rounded hover:text-red-600 text-slate-500" title="Clear Signature">
         <X className="w-4 h-4" />
       </button>
     </div>
@@ -255,6 +236,13 @@ export default function App() {
   const [newAgentPhoto, setNewAgentPhoto] = useState('');
   const [tempLogoUrl, setTempLogoUrl] = useState('');
   const [tempPlaceholders, setTempPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  
+  // --- Edit Agent State ---
+  const [editingAgent, setEditingAgent] = useState(null);
+  const [editAgentName, setEditAgentName] = useState('');
+  const [editAgentEmail, setEditAgentEmail] = useState('');
+  const [editAgentPhoto, setEditAgentPhoto] = useState('');
 
   // --- Agent Mode (QR) State ---
   const [agentModeData, setAgentModeData] = useState({ agentName: '', propertyAddress: '' });
@@ -269,6 +257,8 @@ export default function App() {
   const autocompleteInstance = useRef(null);
   const agentAutocompleteInstance = useRef(null);
   const dbRef = useRef(null);
+  const storageRef = useRef(null);
+  const logoInputRef = useRef(null);
 
   // ============================================================
   // INITIALIZATION
@@ -279,6 +269,7 @@ export default function App() {
       try {
         const app = initializeApp(firebaseConfig);
         dbRef.current = getFirestore(app);
+        storageRef.current = getStorage(app);
         console.log("Firebase Connected");
 
         const qAgents = query(collection(dbRef.current, "agents"), orderBy("name"));
@@ -425,7 +416,11 @@ export default function App() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    if (name === 'purchasePrice' || name === 'depositAmount') {
+      setFormData(prev => ({ ...prev, [name]: formatCurrency(value) }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    }
   };
 
   const handleAgentChange = (e) => {
@@ -453,7 +448,7 @@ export default function App() {
     if (webhookUrl) {
       try {
         const res = await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (res.ok) { setSubmitStatus('success'); alert("Offer sent!"); }
+        if (res.ok) { setSubmitStatus('success'); }
         else { setSubmitStatus('error'); alert("Failed to send."); }
       } catch (e) { setSubmitStatus('error'); alert("Network Error"); }
     } else {
@@ -499,6 +494,28 @@ export default function App() {
     } catch (e) { alert("Save failed."); console.error(e); }
   };
 
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !storageRef.current) return;
+    
+    setIsUploadingLogo(true);
+    try {
+      const fileRef = ref(storageRef.current, `logos/${Date.now()}_${file.name}`);
+      await uploadBytes(fileRef, file);
+      const url = await getDownloadURL(fileRef);
+      setTempLogoUrl(url);
+      alert("Logo uploaded! Click 'Save Settings' to apply.");
+    } catch (e) {
+      console.error(e);
+      alert("Upload failed. Check console.");
+    }
+    setIsUploadingLogo(false);
+  };
+
+  const handleResetLogo = () => {
+    setTempLogoUrl(DEFAULT_LOGO_URL);
+  };
+
   const handleAddAgent = async () => {
     if (!newAgentName || !newAgentEmail || !dbRef.current) return;
     try {
@@ -511,6 +528,29 @@ export default function App() {
       setNewAgentEmail('');
       setNewAgentPhoto('');
     } catch(e) { alert("Add failed."); }
+  };
+
+  const handleEditAgent = (agent) => {
+    setEditingAgent(agent.id);
+    setEditAgentName(agent.name);
+    setEditAgentEmail(agent.email);
+    setEditAgentPhoto(agent.photo || '');
+  };
+
+  const handleSaveAgent = async () => {
+    if (!editingAgent || !dbRef.current) return;
+    try {
+      await updateDoc(doc(dbRef.current, "agents", editingAgent), {
+        name: editAgentName,
+        email: editAgentEmail,
+        photo: editAgentPhoto
+      });
+      setEditingAgent(null);
+    } catch(e) { alert("Update failed."); }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingAgent(null);
   };
 
   const handleDeleteAgent = async (id) => {
@@ -539,7 +579,7 @@ export default function App() {
     if (placeholders.depositAmount) return placeholders.depositAmount;
     if (placeholders.depositPercent && formData.purchasePrice) {
       const calc = calculateDeposit(formData.purchasePrice, placeholders.depositPercent);
-      return calc ? `${calc} (${placeholders.depositPercent}%)` : '';
+      return calc || '';
     }
     if (placeholders.depositPercent) return `${placeholders.depositPercent}% of price`;
     return '';
@@ -599,6 +639,7 @@ export default function App() {
                   setShowAdminPanel(false); 
                   agentAutocompleteInstance.current = null;
                   setAgentModeReady(false);
+                  setEditingAgent(null);
                 }} className="text-slate-400 hover:text-white">
                   <X className="w-6 h-6" />
                 </button>
@@ -606,22 +647,13 @@ export default function App() {
             </div>
             
             <div className="bg-slate-100 border-b border-slate-200 flex shrink-0">
-              <button 
-                onClick={() => setAdminTab('qr')}
-                className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'qr' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >
+              <button onClick={() => setAdminTab('qr')} className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'qr' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
                 <QrCode className="w-4 h-4" /> QR Generator
               </button>
-              <button 
-                onClick={() => setAdminTab('settings')}
-                className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'settings' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >
+              <button onClick={() => setAdminTab('settings')} className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'settings' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
                 <Settings className="w-4 h-4" /> Settings
               </button>
-              <button 
-                onClick={() => setAdminTab('team')}
-                className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'team' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >
+              <button onClick={() => setAdminTab('team')} className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'team' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
                 <Users className="w-4 h-4" /> Team
               </button>
             </div>
@@ -634,36 +666,18 @@ export default function App() {
                     <p className="text-sm text-slate-600">Generate a QR code link for your open home.</p>
                     <div>
                       <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Agent</label>
-                      <select 
-                        className="w-full border border-slate-300 rounded p-2 text-sm" 
-                        value={agentModeData.agentName} 
-                        onChange={(e) => { setAgentModeData(p => ({...p, agentName: e.target.value})); setQrGenerated(false); }}
-                      >
+                      <select className="w-full border border-slate-300 rounded p-2 text-sm" value={agentModeData.agentName} onChange={(e) => { setAgentModeData(p => ({...p, agentName: e.target.value})); setQrGenerated(false); }}>
                         <option value="">-- Select --</option>
-                        {agentsList.map(a => (
-                          <option key={a.id || a.name} value={a.name}>{a.name}</option>
-                        ))}
+                        {agentsList.map(a => (<option key={a.id || a.name} value={a.name}>{a.name}</option>))}
                       </select>
                     </div>
                     <div>
                       <label className="text-xs font-bold text-slate-500 uppercase block mb-1 flex items-center gap-1">
-                        Address
-                        {agentModeReady && <MapPin className="w-3 h-3 text-green-500" />}
+                        Address {agentModeReady && <MapPin className="w-3 h-3 text-green-500" />}
                       </label>
-                      <input 
-                        ref={agentAddressInputRef} 
-                        type="text" 
-                        className="w-full border border-slate-300 rounded p-2 text-sm" 
-                        placeholder={agentModeReady ? "Start typing address..." : "Loading..."} 
-                        value={agentModeData.propertyAddress} 
-                        onChange={(e) => { setAgentModeData(p => ({...p, propertyAddress: e.target.value})); setQrGenerated(false); }} 
-                      />
+                      <input ref={agentAddressInputRef} type="text" className="w-full border border-slate-300 rounded p-2 text-sm" placeholder={agentModeReady ? "Start typing address..." : "Loading..."} value={agentModeData.propertyAddress} onChange={(e) => { setAgentModeData(p => ({...p, propertyAddress: e.target.value})); setQrGenerated(false); }} />
                     </div>
-                    <button 
-                      onClick={generateSmartLink} 
-                      disabled={!agentModeData.agentName || !agentModeData.propertyAddress || isGeneratingLink} 
-                      className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white py-3 rounded text-sm font-bold mt-2 flex items-center justify-center gap-2"
-                    >
+                    <button onClick={generateSmartLink} disabled={!agentModeData.agentName || !agentModeData.propertyAddress || isGeneratingLink} className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white py-3 rounded text-sm font-bold mt-2 flex items-center justify-center gap-2">
                       {isGeneratingLink ? <Loader className="w-4 h-4 animate-spin"/> : <><QrCode className="w-4 h-4"/> Generate QR</>}
                     </button>
                   </div>
@@ -694,9 +708,25 @@ export default function App() {
               {adminTab === 'settings' && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo URL</h3>
-                    <input type="text" value={tempLogoUrl} onChange={(e) => setTempLogoUrl(e.target.value)} className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="https://..." />
-                    <p className="text-xs text-slate-500 mt-1">Max height 60px. Transparent PNG recommended.</p>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo</h3>
+                    <div className="flex items-start gap-4">
+                      <div className="w-32 h-16 bg-slate-100 border border-slate-200 rounded flex items-center justify-center p-2">
+                        <img src={tempLogoUrl || DEFAULT_LOGO_URL} alt="Current Logo" className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input type="text" value={tempLogoUrl} onChange={(e) => setTempLogoUrl(e.target.value)} className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Logo URL..." />
+                        <div className="flex gap-2">
+                          <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                          <button onClick={() => logoInputRef.current?.click()} disabled={isUploadingLogo} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold">
+                            {isUploadingLogo ? <Loader className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Upload
+                          </button>
+                          <button onClick={handleResetLogo} className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold">
+                            <RotateCcw className="w-3 h-3" /> Default
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-500">Upload a seasonal logo (e.g. Christmas) or reset to default.</p>
+                      </div>
+                    </div>
                   </div>
                   
                   <div>
@@ -706,20 +736,26 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs text-slate-500 block mb-1">Purchase Price</label>
-                        <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({...p, purchasePrice: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="e.g. 1,500,000" />
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                          <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({...p, purchasePrice: formatCurrency(e.target.value)}))} className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" placeholder="e.g. 1,500,000" />
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs text-slate-500 block mb-1 flex items-center gap-1">
-                          Deposit Amount <span className="text-slate-400">OR</span> Percentage <Percent className="w-3 h-3 text-slate-400" />
+                          Deposit Amount <span className="text-slate-400">OR</span> Percentage
                         </label>
                         <div className="flex gap-2">
-                          <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositAmount: e.target.value, depositPercent: ''}))} className="flex-1 border border-slate-300 rounded p-2 text-sm" placeholder="e.g. 50,000" />
-                          <div className="relative">
-                            <input type="number" value={tempPlaceholders.depositPercent || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositPercent: e.target.value, depositAmount: ''}))} className="w-20 border border-slate-300 rounded p-2 text-sm pr-6" placeholder="%" min="0" max="100" />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                            <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositAmount: formatCurrency(e.target.value), depositPercent: ''}))} className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" placeholder="e.g. 50,000" />
+                          </div>
+                          <div className="relative w-24">
+                            <input type="number" value={tempPlaceholders.depositPercent || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositPercent: e.target.value, depositAmount: ''}))} className="w-full border border-slate-300 rounded p-2 pr-6 text-sm" placeholder="%" min="0" max="100" />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
                           </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">Use % to auto-calculate based on price</p>
+                        <p className="text-xs text-slate-400 mt-1">% auto-calculates based on purchase price</p>
                       </div>
                       <div>
                         <label className="text-xs text-slate-500 block mb-1">Deposit Terms</label>
@@ -750,27 +786,61 @@ export default function App() {
 
               {adminTab === 'team' && (
                 <div className="space-y-4">
-                  <p className="text-sm text-slate-600">Manage your team members. Add photo URLs from the PRD website.</p>
+                  <p className="text-sm text-slate-600">Manage your team members.</p>
                   
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
                     <div className="max-h-80 overflow-y-auto">
                       {agentsList.map((a, i) => (
-                        <div key={a.id || i} className="flex items-center gap-3 p-3 border-b border-slate-100 hover:bg-slate-50">
-                          {a.photo ? (
-                            <img src={a.photo} alt={a.name} className="w-10 h-10 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
-                              <User className="w-5 h-5" />
+                        <div key={a.id || i} className="border-b border-slate-100 last:border-b-0">
+                          {editingAgent === a.id ? (
+                            // Edit Mode
+                            <div className="p-3 bg-blue-50 space-y-2">
+                              <div className="flex items-center gap-2">
+                                {editAgentPhoto ? (
+                                  <img src={editAgentPhoto} alt="Preview" className="w-10 h-10 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                                    <User className="w-5 h-5" />
+                                  </div>
+                                )}
+                                <input type="text" value={editAgentName} onChange={(e) => setEditAgentName(e.target.value)} className="flex-1 border border-slate-300 rounded p-1.5 text-sm" placeholder="Name" />
+                              </div>
+                              <input type="email" value={editAgentEmail} onChange={(e) => setEditAgentEmail(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Email" />
+                              <input type="text" value={editAgentPhoto} onChange={(e) => setEditAgentPhoto(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Photo URL" />
+                              <div className="flex gap-2">
+                                <button onClick={handleSaveAgent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1">
+                                  <Check className="w-3 h-3" /> Save
+                                </button>
+                                <button onClick={handleCancelEdit} className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1">
+                                  <X className="w-3 h-3" /> Cancel
+                                </button>
+                              </div>
                             </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-bold text-slate-800 truncate">{a.name}</div>
-                            <div className="text-xs text-slate-500 truncate">{a.email}</div>
-                          </div>
-                          {a.id && (
-                            <button onClick={() => handleDeleteAgent(a.id)} className="text-slate-400 hover:text-red-500 p-1">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                          ) : (
+                            // View Mode
+                            <div className="flex items-center gap-3 p-3 hover:bg-slate-50">
+                              {a.photo ? (
+                                <img src={a.photo} alt={a.name} className="w-10 h-10 rounded-full object-cover" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                                  <User className="w-5 h-5" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-bold text-slate-800 truncate">{a.name}</div>
+                                <div className="text-xs text-slate-500 truncate">{a.email}</div>
+                              </div>
+                              {a.id && (
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleEditAgent(a)} className="text-slate-400 hover:text-blue-600 p-1" title="Edit">
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => handleDeleteAgent(a.id)} className="text-slate-400 hover:text-red-500 p-1" title="Delete">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       ))}
@@ -813,15 +883,12 @@ export default function App() {
           </div>
         </header>
 
-        {isPrefilled && (
-          <div className="bg-blue-50 border-b border-blue-100 p-2 text-center text-xs text-blue-700 font-medium print:hidden">Form pre-filled by agent. Please complete buyer details.</div>
-        )}
         {submitStatus === 'success' && (
           <div className="mx-8 mt-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 print:hidden">
             <div className="bg-green-100 p-2 rounded-full text-green-600"><Check className="w-5 h-5" /></div>
             <div>
               <h3 className="font-bold text-green-800">Offer Submitted Successfully!</h3>
-              <p className="text-sm text-green-700 mt-1">Your offer has been sent to the agent.</p>
+              <p className="text-sm text-green-700 mt-1">Your offer has been sent to the agent and a copy has been emailed to you.</p>
               <div className="flex gap-3 mt-2">
                 <button onClick={() => window.print()} className="text-xs font-bold text-green-800 hover:text-green-900 underline flex items-center gap-1">
                   <Printer className="w-3 h-3" /> Print a Copy
@@ -868,8 +935,8 @@ export default function App() {
 
           <SectionHeader icon={DollarSign} title="Price & Deposit" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <InputField label="Purchase Price Offer ($)" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required />
-            <InputField label="Initial Deposit ($)" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} />
+            <InputField label="Purchase Price Offer" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required prefix="$" />
+            <InputField label="Initial Deposit" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} prefix="$" />
             <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
           </div>
 
