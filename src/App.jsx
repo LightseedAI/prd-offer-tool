@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type } from 'lucide-react';
+import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent } from 'lucide-react';
 
 // Firebase Imports
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
 
 // ==============================================================================
 // 🔒 ADMIN CONFIGURATION (HARDCODE YOUR KEYS HERE)
@@ -32,6 +32,7 @@ const DEFAULT_LOGO_URL = "https://prdburleighheads.com.au/wp-content/uploads/202
 const DEFAULT_PLACEHOLDERS = {
   purchasePrice: '',
   depositAmount: '',
+  depositPercent: '', // NEW: percentage option
   depositTerms: 'Payable immediately',
   financeDate: '14 days from contract date',
   inspectionDate: '14 days from contract date',
@@ -65,29 +66,12 @@ const DEFAULT_AGENTS = [
   { name: 'Talitha Jose', email: 'talitha@prdburleighheads.com.au' }
 ];
 
-// --- Helper: Robust Config Parser ---
-const safeParseConfig = (input) => {
-  if (!input) return null;
-  
-  let clean = input.trim();
-  clean = clean.replace(/\/\/.*$/gm, ''); // Remove comments
-  
-  const firstBrace = clean.indexOf('{');
-  const lastBrace = clean.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    clean = clean.substring(firstBrace, lastBrace + 1);
-  }
-
-  try {
-    return JSON.parse(clean);
-  } catch (e) {
-    try {
-      const fn = new Function(`return ${clean}`);
-      return fn();
-    } catch (e2) {
-      return null;
-    }
-  }
+// --- Helper: Calculate deposit from percentage ---
+const calculateDeposit = (price, percent) => {
+  const numPrice = parseFloat(String(price).replace(/[^0-9.]/g, ''));
+  const numPercent = parseFloat(percent);
+  if (isNaN(numPrice) || isNaN(numPercent)) return '';
+  return Math.round(numPrice * (numPercent / 100)).toLocaleString();
 };
 
 // --- Components ---
@@ -232,7 +216,7 @@ export default function App() {
     solicitorEmail: '',
     purchasePrice: '',
     depositAmount: '',
-    depositTerms: '', // Will load from defaults
+    depositTerms: '',
     financeDate: '',
     financePreApproved: false,
     inspectionDate: '',
@@ -244,14 +228,14 @@ export default function App() {
     signatureDate2: new Date().toISOString().split('T')[0]
   });
 
-  // --- Infrastructure State (Hardcoded usually) ---
+  // --- Infrastructure State ---
   const [googleApiKey] = useState(CONST_GOOGLE_MAPS_KEY);
   const [webhookUrl] = useState(CONST_WEBHOOK_URL);
   const [firebaseConfig] = useState(CONST_FIREBASE_CONFIG);
 
   // --- UI State ---
-  const [showSettings, setShowSettings] = useState(false);
-  const [showAgentMode, setShowAgentMode] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminTab, setAdminTab] = useState('qr');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
@@ -261,7 +245,6 @@ export default function App() {
   const [isMapsLoaded, setIsMapsLoaded] = useState(false);
   const [mapsError, setMapsError] = useState(null);
   const [isPrefilled, setIsPrefilled] = useState(false);
-  // Initialize with Defaults
   const [agentsList, setAgentsList] = useState(DEFAULT_AGENTS);
   const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
   const [placeholders, setPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
@@ -269,6 +252,7 @@ export default function App() {
   // --- Admin UI State ---
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentEmail, setNewAgentEmail] = useState('');
+  const [newAgentPhoto, setNewAgentPhoto] = useState('');
   const [tempLogoUrl, setTempLogoUrl] = useState('');
   const [tempPlaceholders, setTempPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
 
@@ -290,7 +274,6 @@ export default function App() {
   // INITIALIZATION
   // ============================================================
 
-  // 1. Initialize Firebase & Fetch Configs
   useEffect(() => {
     if (firebaseConfig && !dbRef.current) {
       try {
@@ -298,7 +281,6 @@ export default function App() {
         dbRef.current = getFirestore(app);
         console.log("Firebase Connected");
 
-        // A. Fetch Agents (Firebase only - no duplicates)
         const qAgents = query(collection(dbRef.current, "agents"), orderBy("name"));
         const unsubAgents = onSnapshot(qAgents, (snap) => {
           if(!snap.empty) {
@@ -307,7 +289,6 @@ export default function App() {
           }
         });
 
-        // B. Fetch Settings (Logo & Placeholders)
         const docRef = doc(dbRef.current, "config", "settings");
         const unsubSettings = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -330,7 +311,6 @@ export default function App() {
     }
   }, [firebaseConfig]);
 
-  // 2. Initialize Google Maps
   useEffect(() => {
     if (!googleApiKey) return;
     
@@ -349,7 +329,6 @@ export default function App() {
     document.head.appendChild(script);
   }, [googleApiKey]);
 
-  // 3. Initialize Autocomplete
   const initAutocomplete = (inputRef, instanceRef, callback) => {
     if (isMapsLoaded && !mapsError && inputRef.current && !instanceRef.current) {
       try {
@@ -370,12 +349,10 @@ export default function App() {
   }, [isMapsLoaded, mapsError, isPrefilled]);
 
   useEffect(() => {
-    if (showAgentMode && isMapsLoaded && !mapsError) {
-      // Reset the instance so it can be re-initialized
+    if (showAdminPanel && adminTab === 'qr' && isMapsLoaded && !mapsError) {
       agentAutocompleteInstance.current = null;
       setAgentModeReady(false);
       
-      // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
         if (agentAddressInputRef.current && !agentAutocompleteInstance.current) {
           try {
@@ -398,13 +375,12 @@ export default function App() {
       
       return () => clearTimeout(timer);
     }
-  }, [showAgentMode, isMapsLoaded, mapsError]);
+  }, [showAdminPanel, adminTab, isMapsLoaded, mapsError]);
 
-  // 4. Load URL Params (Shortlink or Legacy)
   useEffect(() => {
     const loadFromUrl = async () => {
       const params = new URLSearchParams(window.location.search);
-      const id = params.get('id'); // Shortlink ID
+      const id = params.get('id');
       
       if (id && dbRef.current) {
         setIsPrefilled(true); 
@@ -426,16 +402,13 @@ export default function App() {
         }
       }
     };
-    // Tiny delay to ensure DB is ready if needed
     setTimeout(loadFromUrl, 800);
   }, [agentsList]);
-
 
   // ============================================================
   // HANDLERS
   // ============================================================
 
-  // Admin Password Check
   const checkAdminAccess = (callback) => {
     if (adminUnlocked) {
       callback();
@@ -450,7 +423,6 @@ export default function App() {
     }
   };
 
-  // Form Data Helpers
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
@@ -464,14 +436,11 @@ export default function App() {
   const handleSignatureEnd = (field, dataUrl) => setFormData(prev => ({ ...prev, [field]: dataUrl }));
   const handleSignatureClear = (field) => setFormData(prev => ({ ...prev, [field]: null }));
   
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Use defaults if fields are empty
     const payload = { 
       ...formData, 
       depositTerms: formData.depositTerms || placeholders.depositTerms,
@@ -488,13 +457,11 @@ export default function App() {
         else { setSubmitStatus('error'); alert("Failed to send."); }
       } catch (e) { setSubmitStatus('error'); alert("Network Error"); }
     } else {
-      // Fallback if no webhook configured
       setTimeout(() => { setSubmitStatus('success'); window.scrollTo({ top: 0, behavior: 'smooth' }); }, 1000);
     }
     setIsSubmitting(false);
   };
 
-  // --- Agent Area (Link Generator) ---
   const generateSmartLink = async () => {
     if (!agentModeData.agentName || !agentModeData.propertyAddress) return;
     setIsGeneratingLink(true);
@@ -502,7 +469,7 @@ export default function App() {
 
     if (dbRef.current) {
       try {
-        const uniqueId = Math.random().toString(36).substring(2, 7); // 5 chars
+        const uniqueId = Math.random().toString(36).substring(2, 7);
         await setDoc(doc(dbRef.current, "shortlinks", uniqueId), {
           agent: agentModeData.agentName,
           address: agentModeData.propertyAddress,
@@ -521,9 +488,8 @@ export default function App() {
     setQrGenerated(true);
   };
 
-  // --- Settings Handlers ---
   const handleSaveSettings = async () => {
-    if (!dbRef.current) { alert("Database not connected via code constants."); return; }
+    if (!dbRef.current) { alert("Database not connected."); return; }
     try {
       await setDoc(doc(dbRef.current, "config", "settings"), { 
         logoUrl: tempLogoUrl,
@@ -536,8 +502,14 @@ export default function App() {
   const handleAddAgent = async () => {
     if (!newAgentName || !newAgentEmail || !dbRef.current) return;
     try {
-      await addDoc(collection(dbRef.current, "agents"), { name: newAgentName, email: newAgentEmail });
-      setNewAgentName(''); setNewAgentEmail('');
+      await addDoc(collection(dbRef.current, "agents"), { 
+        name: newAgentName, 
+        email: newAgentEmail,
+        photo: newAgentPhoto || ''
+      });
+      setNewAgentName(''); 
+      setNewAgentEmail('');
+      setNewAgentPhoto('');
     } catch(e) { alert("Add failed."); }
   };
 
@@ -546,7 +518,6 @@ export default function App() {
     if(window.confirm("Remove Agent?")) await deleteDoc(doc(dbRef.current, "agents", id));
   };
 
-  // --- QR Download ---
   const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(shortLink || 'https://prdburleigh.com')}&ecc=L&margin=2&format=png`;
   
   const downloadQr = async () => {
@@ -564,7 +535,18 @@ export default function App() {
     } catch(e) { window.open(qrApiUrl, '_blank'); }
   };
 
+  const getDepositPlaceholder = () => {
+    if (placeholders.depositAmount) return placeholders.depositAmount;
+    if (placeholders.depositPercent && formData.purchasePrice) {
+      const calc = calculateDeposit(formData.purchasePrice, placeholders.depositPercent);
+      return calc ? `${calc} (${placeholders.depositPercent}%)` : '';
+    }
+    if (placeholders.depositPercent) return `${placeholders.depositPercent}% of price`;
+    return '';
+  };
+
   const hasSecondBuyer = formData.buyerName2 && formData.buyerName2.trim().length > 0;
+  const selectedAgent = agentsList.find(a => a.name === formData.agentName);
 
   return (
     <div className="min-h-screen bg-slate-100 print:bg-white text-slate-800 font-sans relative">
@@ -577,23 +559,19 @@ export default function App() {
             <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />
             <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
           </div>
-          {/* Only show controls for agents (not prefilled/buyer view) */}
           {!isPrefilled && (
             <div className="flex gap-2">
                <button onClick={() => checkAdminAccess(() => {
-                  // Sync values from main form to Agent Kiosk
                   setAgentModeData({
                     agentName: formData.agentName || '',
                     propertyAddress: formData.propertyAddress || ''
                   });
                   setShortLink('');
                   setQrGenerated(false);
-                  setShowAgentMode(true);
+                  setShowAdminPanel(true);
+                  setAdminTab('qr');
                 })} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
-                <QrCode className="w-4 h-4" /> Agent Area
-              </button>
-               <button onClick={() => checkAdminAccess(() => setShowSettings(!showSettings))} className="p-2 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white">
-                <Settings className="w-5 h-5" />
+                <Lock className="w-3 h-3" /> Admin
               </button>
               <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
                 <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
@@ -601,150 +579,217 @@ export default function App() {
             </div>
           )}
         </div>
-        
-        {/* SETTINGS DRAWER (Simplified for Agents) */}
-        {showSettings && (
-          <div className="max-w-5xl mx-auto mt-4 p-6 bg-slate-800 rounded-xl border border-slate-700 animate-in slide-in-from-top-2 shadow-2xl">
-            <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
-               <h2 className="font-bold text-white flex items-center gap-2"><Settings className="w-5 h-5" /> Settings</h2>
-               <div className="flex gap-2">
-                 {/* Connection Status Dots */}
-                 <div title="Maps API" className={`w-2 h-2 rounded-full ${googleApiKey ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                 <div title="Webhook" className={`w-2 h-2 rounded-full ${webhookUrl ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                 <div title="Database" className={`w-2 h-2 rounded-full ${dbRef.current ? 'bg-green-500' : 'bg-red-500'}`}></div>
-               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {/* Column 1: Branding & Defaults */}
-               <div className="space-y-6">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><ImageIcon className="w-3 h-3" /> Logo URL</h3>
-                    <input type="text" value={tempLogoUrl} onChange={(e) => setTempLogoUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
-                    <p className="text-[10px] text-slate-500 mt-1">Max height 60px. Transparent PNG recommended.</p>
-                  </div>
-                  
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Type className="w-3 h-3" /> Form Placeholders</h3>
-                    <p className="text-[10px] text-slate-500 mb-2">Leave empty for no placeholder</p>
-                    <div className="space-y-2">
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Purchase Price</label>
-                          <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({...p, purchasePrice: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" placeholder="e.g. 1,500,000" />
-                       </div>
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Initial Deposit</label>
-                          <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositAmount: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" placeholder="e.g. 1,000" />
-                       </div>
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Deposit Terms</label>
-                          <input type="text" value={tempPlaceholders.depositTerms || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositTerms: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
-                       </div>
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Finance Date</label>
-                          <input type="text" value={tempPlaceholders.financeDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, financeDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
-                       </div>
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Building & Pest Inspection</label>
-                          <input type="text" value={tempPlaceholders.inspectionDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, inspectionDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
-                       </div>
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Settlement Date</label>
-                          <input type="text" value={tempPlaceholders.settlementDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, settlementDate: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
-                       </div>
-                       <div>
-                          <label className="text-[10px] text-slate-500 block">Special Conditions</label>
-                          <input type="text" value={tempPlaceholders.specialConditions || ''} onChange={(e) => setTempPlaceholders(p => ({...p, specialConditions: e.target.value}))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-xs text-white" />
-                       </div>
-                    </div>
-                  </div>
-                  
-                  <button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold w-full">Save Changes</button>
-               </div>
-
-               {/* Column 2: Team Management */}
-               <div>
-                 <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Users className="w-3 h-3" /> Manage Team</h3>
-                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 h-64 flex flex-col">
-                    <div className="flex-1 overflow-y-auto mb-3 space-y-1">
-                       {agentsList.map((a, i) => (
-                         <div key={a.id || i} className="flex justify-between items-center p-2 bg-slate-800 rounded border border-slate-700">
-                            <div className="truncate">
-                              <div className="text-xs font-bold text-slate-200">{a.name}</div>
-                              <div className="text-[10px] text-slate-500">{a.email}</div>
-                            </div>
-                            {a.id && <button onClick={() => handleDeleteAgent(a.id)} className="text-slate-500 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>}
-                         </div>
-                       ))}
-                    </div>
-                    <div className="pt-2 border-t border-slate-700">
-                       <div className="flex gap-2 mb-2">
-                         <input type="text" placeholder="Name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} className="flex-1 bg-slate-800 border border-slate-600 rounded p-1 text-xs text-white" />
-                         <input type="email" placeholder="Email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} className="flex-1 bg-slate-800 border border-slate-600 rounded p-1 text-xs text-white" />
-                       </div>
-                       <button onClick={handleAddAgent} disabled={!newAgentName} className="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 rounded">Add Agent</button>
-                    </div>
-                 </div>
-               </div>
-            </div>
-          </div>
-        )}
       </nav>
 
-      {/* AGENT MODE / QR */}
-      {showAgentMode && (
+      {/* ADMIN PANEL */}
+      {showAdminPanel && (
         <div className="fixed inset-0 z-[60] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 print:hidden">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div className="bg-slate-900 p-4 flex justify-between items-center">
-              <h2 className="text-white font-bold text-lg flex items-center gap-2"><QrCode className="w-5 h-5 text-red-500" /> Agent Kiosk</h2>
-              <button onClick={() => { 
-                setShowAgentMode(false); 
-                agentAutocompleteInstance.current = null;
-                setAgentModeReady(false);
-              }} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-slate-900 p-4 flex justify-between items-center shrink-0">
+              <h2 className="text-white font-bold text-lg flex items-center gap-2">
+                <Lock className="w-5 h-5 text-red-500" /> Admin Panel
+              </h2>
+              <div className="flex items-center gap-3">
+                <div className="flex gap-2">
+                  <div title="Maps API" className={`w-2 h-2 rounded-full ${googleApiKey ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <div title="Webhook" className={`w-2 h-2 rounded-full ${webhookUrl ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <div title="Database" className={`w-2 h-2 rounded-full ${dbRef.current ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                </div>
+                <button onClick={() => { 
+                  setShowAdminPanel(false); 
+                  agentAutocompleteInstance.current = null;
+                  setAgentModeReady(false);
+                }} className="text-slate-400 hover:text-white">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-               <div className="space-y-4">
-                  <p className="text-sm text-slate-600">Prepare a form link for your open home.</p>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Agent</label>
-                    <select className="w-full border border-slate-300 rounded p-2 text-sm" value={agentModeData.agentName} onChange={(e) => { setAgentModeData(p => ({...p, agentName: e.target.value})); setQrGenerated(false); }}>
-                      <option value="">-- Select --</option>
-                      {agentsList.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-                    </select>
+            
+            <div className="bg-slate-100 border-b border-slate-200 flex shrink-0">
+              <button 
+                onClick={() => setAdminTab('qr')}
+                className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'qr' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <QrCode className="w-4 h-4" /> QR Generator
+              </button>
+              <button 
+                onClick={() => setAdminTab('settings')}
+                className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'settings' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Settings className="w-4 h-4" /> Settings
+              </button>
+              <button 
+                onClick={() => setAdminTab('team')}
+                className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'team' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Users className="w-4 h-4" /> Team
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              
+              {adminTab === 'qr' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-600">Generate a QR code link for your open home.</p>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Agent</label>
+                      <select 
+                        className="w-full border border-slate-300 rounded p-2 text-sm" 
+                        value={agentModeData.agentName} 
+                        onChange={(e) => { setAgentModeData(p => ({...p, agentName: e.target.value})); setQrGenerated(false); }}
+                      >
+                        <option value="">-- Select --</option>
+                        {agentsList.map(a => (
+                          <option key={a.id || a.name} value={a.name}>{a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1 flex items-center gap-1">
+                        Address
+                        {agentModeReady && <MapPin className="w-3 h-3 text-green-500" />}
+                      </label>
+                      <input 
+                        ref={agentAddressInputRef} 
+                        type="text" 
+                        className="w-full border border-slate-300 rounded p-2 text-sm" 
+                        placeholder={agentModeReady ? "Start typing address..." : "Loading..."} 
+                        value={agentModeData.propertyAddress} 
+                        onChange={(e) => { setAgentModeData(p => ({...p, propertyAddress: e.target.value})); setQrGenerated(false); }} 
+                      />
+                    </div>
+                    <button 
+                      onClick={generateSmartLink} 
+                      disabled={!agentModeData.agentName || !agentModeData.propertyAddress || isGeneratingLink} 
+                      className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white py-3 rounded text-sm font-bold mt-2 flex items-center justify-center gap-2"
+                    >
+                      {isGeneratingLink ? <Loader className="w-4 h-4 animate-spin"/> : <><QrCode className="w-4 h-4"/> Generate QR</>}
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1 flex items-center gap-1">
-                      Address
-                      {agentModeReady && <MapPin className="w-3 h-3 text-green-500" />}
-                    </label>
-                    <input ref={agentAddressInputRef} type="text" className="w-full border border-slate-300 rounded p-2 text-sm" placeholder={agentModeReady ? "Start typing address..." : "Loading..."} value={agentModeData.propertyAddress} onChange={(e) => { setAgentModeData(p => ({...p, propertyAddress: e.target.value})); setQrGenerated(false); }} />
+                  
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg flex flex-col items-center justify-center p-4 min-h-[300px]">
+                    {qrGenerated ? (
+                      <div className="flex flex-col items-center w-full">
+                        <div className="bg-white p-2 rounded shadow mb-3 border border-slate-100">
+                          <img src={qrApiUrl} alt="QR" className="w-40 h-40" />
+                        </div>
+                        <div className="text-xs font-mono text-slate-500 bg-white border rounded px-2 py-1 mb-3 w-full truncate text-center">{shortLink}</div>
+                        <div className="flex gap-2 w-full">
+                          <button onClick={() => { navigator.clipboard.writeText(shortLink); alert("Copied!"); }} className="flex-1 bg-white border hover:bg-slate-50 py-2 rounded text-xs font-bold flex items-center justify-center gap-1"><Copy className="w-3 h-3"/> Copy</button>
+                          <button onClick={downloadQr} className="flex-1 bg-white border hover:bg-slate-50 py-2 rounded text-xs font-bold flex items-center justify-center gap-1"><Download className="w-3 h-3"/> Save</button>
+                        </div>
+                        <a href={shortLink} target="_blank" rel="noreferrer" className="w-full mt-2 bg-slate-900 text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-1 hover:bg-black"><ExternalLink className="w-3 h-3"/> Open Form</a>
+                      </div>
+                    ) : (
+                      <div className="text-slate-400 text-center">
+                        <QrCode className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                        <p className="text-xs">Select Agent & Address<br/>to generate code.</p>
+                      </div>
+                    )}
                   </div>
-                  <button onClick={generateSmartLink} disabled={!agentModeData.agentName || !agentModeData.propertyAddress || isGeneratingLink} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded text-sm font-bold mt-2 flex items-center justify-center gap-2">
-                    {isGeneratingLink ? <Loader className="w-4 h-4 animate-spin"/> : <><QrCode className="w-4 h-4"/> Generate QR</>}
-                  </button>
-               </div>
-               
-               <div className="bg-slate-50 border border-slate-200 rounded-lg flex flex-col items-center justify-center p-4 min-h-[300px]">
-                 {qrGenerated ? (
-                   <div className="animate-in zoom-in-95 duration-300 flex flex-col items-center w-full">
-                     <div className="bg-white p-2 rounded shadow mb-3 border border-slate-100">
-                       <img src={qrApiUrl} alt="QR" className="w-40 h-40" />
-                     </div>
-                     <div className="text-xs font-mono text-slate-500 bg-white border rounded px-2 py-1 mb-3 w-full truncate text-center">{shortLink}</div>
-                     <div className="flex gap-2 w-full">
-                        <button onClick={() => { navigator.clipboard.writeText(shortLink); alert("Copied!"); }} className="flex-1 bg-white border hover:bg-slate-50 py-2 rounded text-xs font-bold flex items-center justify-center gap-1"><Copy className="w-3 h-3"/> Copy</button>
-                        <button onClick={downloadQr} className="flex-1 bg-white border hover:bg-slate-50 py-2 rounded text-xs font-bold flex items-center justify-center gap-1"><Download className="w-3 h-3"/> Save</button>
-                     </div>
-                     <a href={shortLink} target="_blank" className="w-full mt-2 bg-slate-900 text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-1 hover:bg-black"><ExternalLink className="w-3 h-3"/> Open Form</a>
-                   </div>
-                 ) : (
-                   <div className="text-slate-400 text-center">
-                     <QrCode className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                     <p className="text-xs">Select Agent & Address<br/>to generate code.</p>
-                   </div>
-                 )}
-               </div>
+                </div>
+              )}
+
+              {adminTab === 'settings' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo URL</h3>
+                    <input type="text" value={tempLogoUrl} onChange={(e) => setTempLogoUrl(e.target.value)} className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="https://..." />
+                    <p className="text-xs text-slate-500 mt-1">Max height 60px. Transparent PNG recommended.</p>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Type className="w-4 h-4" /> Form Placeholders</h3>
+                    <p className="text-xs text-slate-500 mb-3">Leave empty for no placeholder.</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Purchase Price</label>
+                        <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({...p, purchasePrice: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" placeholder="e.g. 1,500,000" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1 flex items-center gap-1">
+                          Deposit Amount <span className="text-slate-400">OR</span> Percentage <Percent className="w-3 h-3 text-slate-400" />
+                        </label>
+                        <div className="flex gap-2">
+                          <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositAmount: e.target.value, depositPercent: ''}))} className="flex-1 border border-slate-300 rounded p-2 text-sm" placeholder="e.g. 50,000" />
+                          <div className="relative">
+                            <input type="number" value={tempPlaceholders.depositPercent || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositPercent: e.target.value, depositAmount: ''}))} className="w-20 border border-slate-300 rounded p-2 text-sm pr-6" placeholder="%" min="0" max="100" />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">Use % to auto-calculate based on price</p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Deposit Terms</label>
+                        <input type="text" value={tempPlaceholders.depositTerms || ''} onChange={(e) => setTempPlaceholders(p => ({...p, depositTerms: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Finance Date</label>
+                        <input type="text" value={tempPlaceholders.financeDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, financeDate: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Building & Pest Inspection</label>
+                        <input type="text" value={tempPlaceholders.inspectionDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, inspectionDate: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Settlement Date</label>
+                        <input type="text" value={tempPlaceholders.settlementDate || ''} onChange={(e) => setTempPlaceholders(p => ({...p, settlementDate: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs text-slate-500 block mb-1">Special Conditions</label>
+                        <input type="text" value={tempPlaceholders.specialConditions || ''} onChange={(e) => setTempPlaceholders(p => ({...p, specialConditions: e.target.value}))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-bold">Save Settings</button>
+                </div>
+              )}
+
+              {adminTab === 'team' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600">Manage your team members. Add photo URLs from the PRD website.</p>
+                  
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="max-h-80 overflow-y-auto">
+                      {agentsList.map((a, i) => (
+                        <div key={a.id || i} className="flex items-center gap-3 p-3 border-b border-slate-100 hover:bg-slate-50">
+                          {a.photo ? (
+                            <img src={a.photo} alt={a.name} className="w-10 h-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                              <User className="w-5 h-5" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-slate-800 truncate">{a.name}</div>
+                            <div className="text-xs text-slate-500 truncate">{a.email}</div>
+                          </div>
+                          {a.id && (
+                            <button onClick={() => handleDeleteAgent(a.id)} className="text-slate-400 hover:text-red-500 p-1">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h4 className="text-sm font-bold text-slate-700 mb-3">Add New Agent</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <input type="text" placeholder="Name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                      <input type="email" placeholder="Email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                      <input type="text" placeholder="Photo URL (optional)" value={newAgentPhoto} onChange={(e) => setNewAgentPhoto(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                    </div>
+                    <button onClick={handleAddAgent} disabled={!newAgentName || !newAgentEmail} className="mt-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2">
+                      <Plus className="w-4 h-4" /> Add Agent
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -757,7 +802,14 @@ export default function App() {
           <div className="text-right">
              <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
              <p className="text-sm text-slate-500">Official Letter of Offer</p>
-             {formData.agentName && <p className="text-xs text-slate-600 mt-2 font-medium bg-slate-100 p-1 rounded inline-block">Agent: {formData.agentName}</p>}
+             {formData.agentName && (
+               <div className="flex items-center justify-end gap-2 mt-2">
+                 {selectedAgent?.photo && (
+                   <img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 rounded-full object-cover" />
+                 )}
+                 <p className="text-xs text-slate-600 font-medium bg-slate-100 p-1 rounded">Agent: {formData.agentName}</p>
+               </div>
+             )}
           </div>
         </header>
 
@@ -775,9 +827,7 @@ export default function App() {
                   <Printer className="w-3 h-3" /> Print a Copy
                 </button>
                 {!isPrefilled && (
-                  <button onClick={() => window.location.reload()} className="text-xs font-bold text-green-800 hover:text-green-900 underline">
-                    Create New Offer
-                  </button>
+                  <button onClick={() => window.location.reload()} className="text-xs font-bold text-green-800 hover:text-green-900 underline">Create New Offer</button>
                 )}
               </div>
             </div>
@@ -819,7 +869,7 @@ export default function App() {
           <SectionHeader icon={DollarSign} title="Price & Deposit" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <InputField label="Purchase Price Offer ($)" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required />
-            <InputField label="Initial Deposit ($)" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={placeholders.depositAmount || ''} />
+            <InputField label="Initial Deposit ($)" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} />
             <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
           </div>
 
