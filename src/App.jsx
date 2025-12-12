@@ -713,28 +713,30 @@ export default function App() {
       <style>{`.pac-container { z-index: 10000 !important; }`}</style>
 
       {/* NAVBAR */}
-      <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md print:hidden">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />
-            <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
-          </div>
-          {!isPrefilled && (
-            <div className="flex gap-2">
-              <button onClick={() => checkAdminAccess(() => {
-                setAgentModeData({ agentName: formData.agentName || '', propertyAddress: formData.propertyAddress || '' });
-                setShortLink(''); setQrGenerated(false);
-                setShowAdminPanel(true); setAdminTab('qr');
-              })} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
-                <Lock className="w-3 h-3" /> Admin
-              </button>
-              <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
-                <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
-              </button>
+      {!isQRCodeForm && (
+        <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md print:hidden">
+          <div className="max-w-5xl mx-auto flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />
+              <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
             </div>
-          )}
-        </div>
-      </nav>
+            {!isPrefilled && (
+              <div className="flex gap-2">
+                <button onClick={() => checkAdminAccess(() => {
+                  setAgentModeData({ agentName: formData.agentName || '', propertyAddress: formData.propertyAddress || '' });
+                  setShortLink(''); setQrGenerated(false);
+                  setShowAdminPanel(true); setAdminTab('qr');
+                })} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
+                  <Lock className="w-3 h-3" /> Admin
+                </button>
+                <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
+                  <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </nav>
+      )}
 
       {/* ADMIN PANEL */}
       {showAdminPanel && (
@@ -969,28 +971,26 @@ export default function App() {
 
       {/* MAIN FORM */}
       <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
-        {!isQRCodeForm && (
-          <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
-            <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
-              <img 
-                src={logoUrl} 
-                alt="Logo" 
-                className="h-auto w-full max-h-16 object-contain" 
-                style={{ aspectRatio: 'auto' }}
-              />
-            </div>
-            <div className="text-right ml-4">
-              <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
-              <p className="text-sm text-slate-500">Official Letter of Offer</p>
-              {formData.agentName && (
-                <div className="flex items-center justify-end gap-2 mt-2">
-                  {selectedAgent?.photo && (<img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 rounded-full object-cover" />)}
-                  <p className="text-xs text-slate-600 font-medium bg-slate-100 p-1 rounded">Agent: {formData.agentName}</p>
-                </div>
-              )}
-            </div>
-          </header>
-        )}
+        <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
+          <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
+            <img 
+              src={logoUrl} 
+              alt="Logo" 
+              className="h-auto w-full max-h-16 object-contain" 
+              style={{ aspectRatio: 'auto' }}
+            />
+          </div>
+          <div className="text-right ml-4">
+            <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
+            <p className="text-sm text-slate-500">Official Letter of Offer</p>
+            {formData.agentName && (
+              <div className="flex items-center justify-end gap-2 mt-2">
+                {selectedAgent?.photo && (<img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 rounded-full object-cover" />)}
+                <p className="text-xs text-slate-600 font-medium bg-slate-100 p-1 rounded">Agent: {formData.agentName}</p>
+              </div>
+            )}
+          </div>
+        </header>
 
         {validationErrors.length > 0 && (
           <div className="mx-8 mt-6 p-4 bg-red-50 border border-red-200 rounded-lg print:hidden">
