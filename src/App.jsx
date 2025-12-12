@@ -10,7 +10,7 @@ import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSna
 // ==============================================================================
 
 const CONST_GOOGLE_MAPS_KEY = "AIzaSyBZkZwy9O2THIjqA-liZJCPAuoawV0kDvw"; 
-const CONST_WEBHOOK_URL = "";
+const CONST_WEBHOOK_URL = "https://n8n.srv971972.hstgr.cloud/webhook/prd-offer-form";
 const CONST_FIREBASE_CONFIG = {
   apiKey: "AIzaSyASgtk7IbBZbOVDMtGvlZtQWeO0ezgljQc",
   authDomain: "prd-offer-tool.firebaseapp.com",
@@ -252,6 +252,11 @@ export default function App() {
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [qrGenerated, setQrGenerated] = useState(false);
   const [agentModeReady, setAgentModeReady] = useState(false);
+  
+  // Check if form is accessed via QR code (has propertyId in URL)
+  const urlParams = new URLSearchParams(window.location.search);
+  const propertyId = urlParams.get('id');
+  const isQRCodeForm = !!propertyId;
   
   // Refs
   const addressInputRef = useRef(null);
@@ -964,19 +969,28 @@ export default function App() {
 
       {/* MAIN FORM */}
       <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
-        <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
-          <div><img src={logoUrl} alt="Logo" className="h-16 w-auto mb-2" /></div>
-          <div className="text-right">
-            <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
-            <p className="text-sm text-slate-500">Official Letter of Offer</p>
-            {formData.agentName && (
-              <div className="flex items-center justify-end gap-2 mt-2">
-                {selectedAgent?.photo && (<img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 rounded-full object-cover" />)}
-                <p className="text-xs text-slate-600 font-medium bg-slate-100 p-1 rounded">Agent: {formData.agentName}</p>
-              </div>
-            )}
-          </div>
-        </header>
+        {!isQRCodeForm && (
+          <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
+            <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
+              <img 
+                src={logoUrl} 
+                alt="Logo" 
+                className="h-auto w-full max-h-16 object-contain" 
+                style={{ aspectRatio: 'auto' }}
+              />
+            </div>
+            <div className="text-right ml-4">
+              <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
+              <p className="text-sm text-slate-500">Official Letter of Offer</p>
+              {formData.agentName && (
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  {selectedAgent?.photo && (<img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 rounded-full object-cover" />)}
+                  <p className="text-xs text-slate-600 font-medium bg-slate-100 p-1 rounded">Agent: {formData.agentName}</p>
+                </div>
+              )}
+            </div>
+          </header>
+        )}
 
         {validationErrors.length > 0 && (
           <div className="mx-8 mt-6 p-4 bg-red-50 border border-red-200 rounded-lg print:hidden">
