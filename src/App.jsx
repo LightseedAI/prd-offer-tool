@@ -238,6 +238,7 @@ export default function App() {
   const [tempLogoUrl, setTempLogoUrl] = useState('');
   const [tempPlaceholders, setTempPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingAgentPhoto, setIsUploadingAgentPhoto] = useState(false);
   const [newLogoName, setNewLogoName] = useState('');
   
   // Edit Agent State
@@ -265,6 +266,8 @@ export default function App() {
   const agentAutocompleteInstance = useRef(null);
   const dbRef = useRef(null);
   const logoInputRef = useRef(null);
+  const newAgentPhotoInputRef = useRef(null);
+  const editAgentPhotoInputRef = useRef(null);
   const formContainerRef = useRef(null);
 
   // ==============================================================================
@@ -489,7 +492,21 @@ export default function App() {
     if (!formContainerRef.current) return null;
     try {
       const canvas = await html2canvas(formContainerRef.current, {
-        scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff'
+        scale: 2,
+        useCORS: false,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Hide external images that cause CORS issues
+          const images = clonedDoc.querySelectorAll('img');
+          images.forEach(img => {
+            if (img.src && !img.src.startsWith('data:') && !img.src.includes(window.location.hostname)) {
+              // External image - replace with placeholder or hide
+              img.style.visibility = 'hidden';
+            }
+          });
+        }
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -671,6 +688,52 @@ export default function App() {
   const handleDeleteAgent = async (id) => {
     if (!dbRef.current || !id) return;
     if (window.confirm("Remove Agent?")) await deleteDoc(doc(dbRef.current, "agents", id));
+  };
+
+  const handleNewAgentPhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 500000) {
+      alert("Photo too large. Max 500KB. Yours is " + Math.round(file.size / 1000) + "KB");
+      if (newAgentPhotoInputRef.current) newAgentPhotoInputRef.current.value = '';
+      return;
+    }
+    setIsUploadingAgentPhoto(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setNewAgentPhoto(reader.result);
+      setIsUploadingAgentPhoto(false);
+      if (newAgentPhotoInputRef.current) newAgentPhotoInputRef.current.value = '';
+    };
+    reader.onerror = () => {
+      alert("Failed to read file");
+      setIsUploadingAgentPhoto(false);
+      if (newAgentPhotoInputRef.current) newAgentPhotoInputRef.current.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleEditAgentPhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 500000) {
+      alert("Photo too large. Max 500KB. Yours is " + Math.round(file.size / 1000) + "KB");
+      if (editAgentPhotoInputRef.current) editAgentPhotoInputRef.current.value = '';
+      return;
+    }
+    setIsUploadingAgentPhoto(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEditAgentPhoto(reader.result);
+      setIsUploadingAgentPhoto(false);
+      if (editAgentPhotoInputRef.current) editAgentPhotoInputRef.current.value = '';
+    };
+    reader.onerror = () => {
+      alert("Failed to read file");
+      setIsUploadingAgentPhoto(false);
+      if (editAgentPhotoInputRef.current) editAgentPhotoInputRef.current.value = '';
+    };
+    reader.readAsDataURL(file);
   };
 
   const getDepositPlaceholder = () => {
@@ -928,7 +991,24 @@ export default function App() {
                                 <input type="text" value={editAgentName} onChange={(e) => setEditAgentName(e.target.value)} className="flex-1 border border-slate-300 rounded p-1.5 text-sm" placeholder="Name" />
                               </div>
                               <input type="email" value={editAgentEmail} onChange={(e) => setEditAgentEmail(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Email" />
-                              <input type="text" value={editAgentPhoto} onChange={(e) => setEditAgentPhoto(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Photo URL" />
+                              <div className="space-y-1">
+                                <input 
+                                  type="file" 
+                                  ref={editAgentPhotoInputRef}
+                                  onChange={handleEditAgentPhotoUpload}
+                                  accept="image/*"
+                                  className="hidden"
+                                />
+                                <button 
+                                  onClick={() => editAgentPhotoInputRef.current?.click()}
+                                  disabled={isUploadingAgentPhoto}
+                                  className="w-full bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-700 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
+                                >
+                                  <Upload className="w-3 h-3" />
+                                  {isUploadingAgentPhoto ? 'Uploading...' : 'Upload Photo'}
+                                </button>
+                                {editAgentPhoto && <p className="text-xs text-green-600">✓ Photo ready</p>}
+                              </div>
                               <div className="flex gap-2">
                                 <button onClick={handleSaveAgent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1"><Check className="w-3 h-3" /> Save</button>
                                 <button onClick={handleCancelEdit} className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1"><X className="w-3 h-3" /> Cancel</button>
@@ -955,10 +1035,31 @@ export default function App() {
                   </div>
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                     <h4 className="text-sm font-bold text-slate-700 mb-3">Add New Agent</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <input type="text" placeholder="Name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
                       <input type="email" placeholder="Email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
-                      <input type="text" placeholder="Photo URL (optional)" value={newAgentPhoto} onChange={(e) => setNewAgentPhoto(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <input 
+                        type="file" 
+                        ref={newAgentPhotoInputRef}
+                        onChange={handleNewAgentPhotoUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <div className="flex items-center gap-2">
+                        {newAgentPhoto && (
+                          <img src={newAgentPhoto} alt="Preview" className="w-10 h-10 rounded-full object-cover" />
+                        )}
+                        <button 
+                          onClick={() => newAgentPhotoInputRef.current?.click()}
+                          disabled={isUploadingAgentPhoto}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-700 py-2 rounded text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                          <Upload className="w-4 h-4" />
+                          {isUploadingAgentPhoto ? 'Uploading...' : newAgentPhoto ? 'Change Photo' : 'Upload Photo (Optional)'}
+                        </button>
+                      </div>
                     </div>
                     <button onClick={handleAddAgent} disabled={!newAgentName || !newAgentEmail} className="mt-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Add Agent</button>
                   </div>
