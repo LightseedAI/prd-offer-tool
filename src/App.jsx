@@ -20,7 +20,7 @@ const CONST_FIREBASE_CONFIG = {
   appId: "1:124641181600:web:89b578ca25243ec89d2ec5"
 };
 
-const ORIGINAL_DEFAULT_LOGO = "https://prdburleighheads.com.au/wp-content/uploads/2025/01/PRD-B.T-LAND-RED-PNG.png";
+const ORIGINAL_DEFAULT_LOGO = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iODAiIGZpbGw9IiNkYzI2MjYiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QUkQ8L3RleHQ+PC9zdmc+";
 const ADMIN_PASSWORD = "PRD";
 
 const DEFAULT_PLACEHOLDERS = {
