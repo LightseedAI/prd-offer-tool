@@ -492,7 +492,7 @@ export default function App() {
     if (!formContainerRef.current) return null;
     try {
       const canvas = await html2canvas(formContainerRef.current, {
-        scale: 2,
+        scale: 1,  // Reduced from 2 to 1 for smaller file size
         useCORS: false,
         allowTaint: false,
         backgroundColor: '#ffffff',
@@ -508,8 +508,8 @@ export default function App() {
           });
         }
       });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);  // Use JPEG with 85% quality instead of PNG
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
@@ -518,12 +518,12 @@ export default function App() {
       const scaledHeight = imgHeight * ratio;
       let heightLeft = scaledHeight;
       let position = 0;
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth * ratio, scaledHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth * ratio, scaledHeight);
       heightLeft -= pdfHeight;
       while (heightLeft > 0) {
         position = heightLeft - scaledHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth * ratio, scaledHeight);
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth * ratio, scaledHeight);
         heightLeft -= pdfHeight;
       }
       return pdf.output('datauristring').split(',')[1];
