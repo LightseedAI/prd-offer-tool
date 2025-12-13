@@ -460,7 +460,12 @@ export default function App() {
   const handleAgentChange = (e) => {
     if (validationErrors.length > 0) setValidationErrors([]);
     const selected = agentsList.find(a => a.name === e.target.value);
-    setFormData(prev => ({ ...prev, agentName: e.target.value, agentEmail: selected ? selected.email : '' }));
+    setFormData(prev => ({ 
+      ...prev, 
+      agentName: e.target.value, 
+      agentEmail: selected ? selected.email : '',
+      agentPhoto: selected ? selected.photo : '' // <--- Added this line
+    }));
   };
 
   const handleSignatureEnd = (field, dataUrl) => {
