@@ -1,13 +1,19 @@
 import React from 'react';
-import { Page, Text, View, Document, StyleSheet, Image, Font } from '@react-pdf/renderer';
+import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
 
-// Define styles for the PDF
+// Helper to format YYYY-MM-DD to DD-MM-YYYY
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  const [year, month, day] = dateString.split('-');
+  return `${day}-${month}-${year}`;
+};
+
 const styles = StyleSheet.create({
   page: { padding: 40, fontFamily: 'Helvetica', fontSize: 10, color: '#333' },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, borderBottom: '2 solid #E2E8F0', paddingBottom: 20 },
   logo: { width: 120, objectFit: 'contain' },
   headerText: { alignItems: 'flex-end' },
-  title: { fontSize: 24, fontFamily: 'Helvetica-Bold', color: '#DC2626', textTransform: 'uppercase' }, // PRD Red
+  title: { fontSize: 24, fontFamily: 'Helvetica-Bold', color: '#DC2626', textTransform: 'uppercase' },
   subTitle: { fontSize: 10, color: '#64748B' },
   
   section: { marginBottom: 15 },
@@ -78,6 +84,23 @@ export const OfferPdfDocument = ({ formData, logoUrl }) => (
         </View>
       </View>
 
+      {/* SOLICITOR DETAILS (NEW) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Buyer's Solicitor</Text>
+        <View style={styles.row}>
+          <Text style={styles.label}>Company:</Text>
+          <Text style={styles.value}>{formData.solicitorCompany || 'TBA'}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Contact Person:</Text>
+          <Text style={styles.value}>{formData.solicitorContact || 'TBA'}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Email / Phone:</Text>
+          <Text style={styles.value}>{formData.solicitorEmail || 'TBA'}</Text>
+        </View>
+      </View>
+
        {/* PRICE & DEPOSIT */}
        <View style={styles.section}>
         <Text style={styles.sectionTitle}>Price & Deposit</Text>
@@ -132,10 +155,11 @@ export const OfferPdfDocument = ({ formData, logoUrl }) => (
             )}
             <View style={styles.signatureLine} />
             <Text style={styles.signatureLabel}>Buyer 1 Signature</Text>
-            <Text style={{ fontSize: 8, marginTop: 2 }}>Date: {formData.signatureDate1}</Text>
+            {/* DATE FIXED HERE */}
+            <Text style={{ fontSize: 8, marginTop: 2 }}>Date: {formatDate(formData.signatureDate1)}</Text>
           </View>
 
-          {/* Buyer 2 Signature (Conditional) */}
+          {/* Buyer 2 Signature */}
           {formData.buyerName2 && (
             <View style={styles.signatureBox}>
               {formData.signature2 ? (
@@ -145,7 +169,8 @@ export const OfferPdfDocument = ({ formData, logoUrl }) => (
               )}
               <View style={styles.signatureLine} />
               <Text style={styles.signatureLabel}>Buyer 2 Signature</Text>
-              <Text style={{ fontSize: 8, marginTop: 2 }}>Date: {formData.signatureDate2}</Text>
+              {/* DATE FIXED HERE */}
+              <Text style={{ fontSize: 8, marginTop: 2 }}>Date: {formatDate(formData.signatureDate2)}</Text>
             </View>
           )}
         </View>
