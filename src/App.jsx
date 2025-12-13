@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+// NEW IMPORTS
+import { pdf } from '@react-pdf/renderer';
+import { OfferPdfDocument } from './OfferPdf';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
 
@@ -11,8 +12,10 @@ import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSna
 
 const CONST_GOOGLE_MAPS_KEY = "AIzaSyBZkZwy9O2THIjqA-liZJCPAuoawV0kDvw"; 
 const CONST_WEBHOOK_URL = "https://n8n.srv971972.hstgr.cloud/webhook/prd-offer-form";
+
+// Moved to env variable for security, but defaults to your provided key if env is missing
 const CONST_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyASgtk7IbBZbOVDMtGvlZtQWeO0ezgljQc",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyASgtk7IbBZbOVDMtGvlZtQWeO0ezgljQc", 
   authDomain: "prd-offer-tool.firebaseapp.com",
   projectId: "prd-offer-tool",
   storageBucket: "prd-offer-tool.firebasestorage.app",
@@ -489,83 +492,21 @@ export default function App() {
   };
 
   const generatePDF = async () => {
-    if (!formContainerRef.current) return null;
     try {
-      const canvas = await html2canvas(formContainerRef.current, {
-        scale: 2.5,  // High quality
-        useCORS: false,
-        allowTaint: false,
-        backgroundColor: '#ffffff',
-        logging: false,
-        windowWidth: 1200,  // Consistent width
-        onclone: (clonedDoc) => {
-          // Hide all print:hidden elements (success message, buttons, etc.)
-          const printHidden = clonedDoc.querySelectorAll('[class*="print:hidden"]');
-          printHidden.forEach(el => el.remove());
-          
-          // Hide external images that cause CORS issues
-          const images = clonedDoc.querySelectorAll('img');
-          images.forEach(img => {
-            if (img.src && !img.src.startsWith('data:') && !img.src.includes(window.location.hostname)) {
-              img.style.display = 'none';
-            }
-          });
-          
-          // Clean up the container
-          const container = clonedDoc.querySelector('[class*="max-w-4xl"]');
-          if (container) {
-            container.style.boxShadow = 'none';
-            container.style.backgroundColor = '#ffffff';
-          }
-          
-          // Remove body background
-          clonedDoc.body.style.backgroundColor = '#ffffff';
-          
-          // Ensure all text inputs show their values properly
-          const inputs = clonedDoc.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="date"]');
-          inputs.forEach(input => {
-            if (input.value) {
-              input.setAttribute('value', input.value);
-              input.style.color = '#000000';
-            }
-          });
-          
-          // Ensure textareas show content
-          const textareas = clonedDoc.querySelectorAll('textarea');
-          textareas.forEach(textarea => {
-            textarea.innerHTML = textarea.value;
-            textarea.style.color = '#000000';
-          });
-          
-          // Ensure selects show selected value
-          const selects = clonedDoc.querySelectorAll('select');
-          selects.forEach(select => {
-            const selected = select.selectedOptions[0];
-            if (selected) {
-              select.style.color = '#000000';
-            }
-          });
-        }
+      const blob = await pdf(
+        <OfferPdfDocument formData={formData} logoUrl={logoUrl} />
+      ).toBlob();
+      
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          const base64data = reader.result;
+          const rawBase64 = base64data.split(',')[1];
+          resolve(rawBase64); 
+        };
+        reader.onerror = reject;
       });
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);  // Increased quality from 0.85 to 0.92
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const scaledHeight = imgHeight * ratio;
-      let heightLeft = scaledHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth * ratio, scaledHeight);
-      heightLeft -= pdfHeight;
-      while (heightLeft > 0) {
-        position = heightLeft - scaledHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth * ratio, scaledHeight);
-        heightLeft -= pdfHeight;
-      }
-      return pdf.output('datauristring').split(',')[1];
     } catch (e) {
       console.error('PDF generation error:', e);
       return null;
