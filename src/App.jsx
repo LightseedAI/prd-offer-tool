@@ -492,7 +492,7 @@ export default function App() {
     if (!formContainerRef.current) return null;
     try {
       const canvas = await html2canvas(formContainerRef.current, {
-        scale: 1,  // Reduced from 2 to 1 for smaller file size
+        scale: 1.5,
         useCORS: false,
         allowTaint: false,
         backgroundColor: '#ffffff',
@@ -502,13 +502,58 @@ export default function App() {
           const images = clonedDoc.querySelectorAll('img');
           images.forEach(img => {
             if (img.src && !img.src.startsWith('data:') && !img.src.includes(window.location.hostname)) {
-              // External image - replace with placeholder or hide
               img.style.visibility = 'hidden';
+            }
+          });
+          
+          // Replace input fields with divs to prevent text cutoff
+          const inputs = clonedDoc.querySelectorAll('input:not([type="checkbox"]), select');
+          inputs.forEach(input => {
+            const value = input.value || input.getAttribute('value') || '';
+            if (value) {
+              const div = clonedDoc.createElement('div');
+              div.textContent = value;
+              div.style.cssText = `
+                padding: 8px;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                font-size: 14px;
+                line-height: 1.5;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                white-space: normal;
+                min-height: ${input.offsetHeight}px;
+                display: flex;
+                align-items: center;
+              `;
+              input.parentNode.replaceChild(div, input);
+            }
+          });
+          
+          // Fix textareas similarly
+          const textareas = clonedDoc.querySelectorAll('textarea');
+          textareas.forEach(textarea => {
+            const value = textarea.value;
+            if (value) {
+              const div = clonedDoc.createElement('div');
+              div.textContent = value;
+              div.style.cssText = `
+                padding: 8px;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                font-size: 14px;
+                line-height: 1.5;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                white-space: pre-wrap;
+                min-height: ${textarea.scrollHeight}px;
+              `;
+              textarea.parentNode.replaceChild(div, textarea);
             }
           });
         }
       });
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);  // Use JPEG with 85% quality instead of PNG
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);  // Increased quality from 0.85 to 0.92
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
