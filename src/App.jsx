@@ -404,34 +404,56 @@ export default function App() {
     }
   }, [showAdminPanel, adminTab, isMapsLoaded, mapsError]);
 
-  useEffect(() => {
-    const loadFromUrl = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const id = params.get('id');
-      
-      if (id && dbRef.current) {
-        setIsPrefilled(true);
-        try {
-          const snap = await getDoc(doc(dbRef.current, "shortlinks", id));
-          if (snap.exists()) {
-            const data = snap.data();
-            const agentEmail = agentsList.find(a => a.name === data.agent)?.email || '';
-            setFormData(prev => ({ ...prev, agentName: data.agent || '', agentEmail, propertyAddress: data.address || '' }));
-          }
-        } catch (e) { console.error(e); }
-      } else {
-        const agent = params.get('agent') || params.get('a');
-        const address = params.get('address') || params.get('p');
-        if (agent || address) {
-          setIsPrefilled(true);
-          const agentEmail = agentsList.find(a => a.name === agent)?.email || '';
-          setFormData(prev => ({ ...prev, agentName: agent || '', agentEmail, propertyAddress: address || '' }));
-        }
-      }
-    };
-    setTimeout(loadFromUrl, 800);
-  }, [agentsList]);
+ // Updated useEffect to safely load Agent Photo from URL or Shortlink
+ useEffect(() => {
+  const loadFromUrl = async () => {
+    // 1. Wait for agents to load from Firebase first
+    if (agentsList.length === 0) return;
 
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    
+    let foundAgentName = '';
+    let foundAddress = '';
+
+    // Check Shortlink ID (QR Code)
+    if (id && dbRef.current) {
+      setIsPrefilled(true);
+      try {
+        const snap = await getDoc(doc(dbRef.current, "shortlinks", id));
+        if (snap.exists()) {
+          const data = snap.data();
+          foundAgentName = data.agent || '';
+          foundAddress = data.address || '';
+        }
+      } catch (e) { console.error(e); }
+    } 
+    // Check Direct URL Params
+    else {
+      foundAgentName = params.get('agent') || params.get('a') || '';
+      foundAddress = params.get('address') || params.get('p') || '';
+      if (foundAgentName || foundAddress) setIsPrefilled(true);
+    }
+
+    // 2. If we found an agent name, look up their details (Photo & Email)
+    if (foundAgentName) {
+      const agentDetails = agentsList.find(a => a.name === foundAgentName);
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        agentName: foundAgentName,
+        propertyAddress: foundAddress || prev.propertyAddress,
+        // Use the found email/photo, or keep existing if not found
+        agentEmail: agentDetails ? agentDetails.email : prev.agentEmail,
+        agentPhoto: agentDetails ? agentDetails.photo : '' // <--- CRITICAL FIX
+      }));
+    } else if (foundAddress) {
+      setFormData(prev => ({ ...prev, propertyAddress: foundAddress }));
+    }
+  };
+  
+  loadFromUrl();
+}, [agentsList]); // <--- Reruns when Firebase delivers the agents list
   // ==============================================================================
   // HANDLERS
   // ==============================================================================
@@ -464,7 +486,7 @@ export default function App() {
       ...prev, 
       agentName: e.target.value, 
       agentEmail: selected ? selected.email : '',
-      agentPhoto: selected ? selected.photo : '' // <--- Added this line
+      agentPhoto: selected ? selected.photo : '' // <--- Ensures photo is saved
     }));
   };
 
