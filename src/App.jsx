@@ -492,63 +492,57 @@ export default function App() {
     if (!formContainerRef.current) return null;
     try {
       const canvas = await html2canvas(formContainerRef.current, {
-        scale: 1.5,
+        scale: 2.5,  // High quality
         useCORS: false,
         allowTaint: false,
         backgroundColor: '#ffffff',
         logging: false,
+        windowWidth: 1200,  // Consistent width
         onclone: (clonedDoc) => {
+          // Hide all print:hidden elements (success message, buttons, etc.)
+          const printHidden = clonedDoc.querySelectorAll('[class*="print:hidden"]');
+          printHidden.forEach(el => el.remove());
+          
           // Hide external images that cause CORS issues
           const images = clonedDoc.querySelectorAll('img');
           images.forEach(img => {
             if (img.src && !img.src.startsWith('data:') && !img.src.includes(window.location.hostname)) {
-              img.style.visibility = 'hidden';
+              img.style.display = 'none';
             }
           });
           
-          // Replace input fields with divs to prevent text cutoff
-          const inputs = clonedDoc.querySelectorAll('input:not([type="checkbox"]), select');
+          // Clean up the container
+          const container = clonedDoc.querySelector('[class*="max-w-4xl"]');
+          if (container) {
+            container.style.boxShadow = 'none';
+            container.style.backgroundColor = '#ffffff';
+          }
+          
+          // Remove body background
+          clonedDoc.body.style.backgroundColor = '#ffffff';
+          
+          // Ensure all text inputs show their values properly
+          const inputs = clonedDoc.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="date"]');
           inputs.forEach(input => {
-            const value = input.value || input.getAttribute('value') || '';
-            if (value) {
-              const div = clonedDoc.createElement('div');
-              div.textContent = value;
-              div.style.cssText = `
-                padding: 8px;
-                border: 1px solid #cbd5e1;
-                border-radius: 4px;
-                font-size: 14px;
-                line-height: 1.5;
-                word-wrap: break-word;
-                overflow-wrap: break-word;
-                white-space: normal;
-                min-height: ${input.offsetHeight}px;
-                display: flex;
-                align-items: center;
-              `;
-              input.parentNode.replaceChild(div, input);
+            if (input.value) {
+              input.setAttribute('value', input.value);
+              input.style.color = '#000000';
             }
           });
           
-          // Fix textareas similarly
+          // Ensure textareas show content
           const textareas = clonedDoc.querySelectorAll('textarea');
           textareas.forEach(textarea => {
-            const value = textarea.value;
-            if (value) {
-              const div = clonedDoc.createElement('div');
-              div.textContent = value;
-              div.style.cssText = `
-                padding: 8px;
-                border: 1px solid #cbd5e1;
-                border-radius: 4px;
-                font-size: 14px;
-                line-height: 1.5;
-                word-wrap: break-word;
-                overflow-wrap: break-word;
-                white-space: pre-wrap;
-                min-height: ${textarea.scrollHeight}px;
-              `;
-              textarea.parentNode.replaceChild(div, textarea);
+            textarea.innerHTML = textarea.value;
+            textarea.style.color = '#000000';
+          });
+          
+          // Ensure selects show selected value
+          const selects = clonedDoc.querySelectorAll('select');
+          selects.forEach(select => {
+            const selected = select.selectedOptions[0];
+            if (selected) {
+              select.style.color = '#000000';
             }
           });
         }
