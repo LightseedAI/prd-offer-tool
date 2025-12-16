@@ -91,10 +91,10 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
           prefix ? 'pl-7' : ''
         } ${
           error 
-            ? 'input-error bg-red-50' 
+            ? 'border-red-500 bg-red-50 focus:ring-red-500' // Error state
             : readOnly 
               ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed' 
-              : 'border-slate-300 focus:ring-2 focus:ring-red-600'
+              : 'border-slate-300 focus:ring-2 focus:ring-red-600' // Normal state
         }`}
         autoComplete={name === "propertyAddress" ? "off" : "on"}
         id={name} 
@@ -169,7 +169,7 @@ const SignaturePad = ({ onEnd, onClear, signatureData, error }) => {
 
   return (
     <div className={`relative w-full h-40 border-2 border-dashed rounded bg-slate-50 hover:bg-white transition-colors touch-none ${error ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}>
-      {!signatureData && <div className={`absolute inset-0 flex items-center justify-center pointer-events-none text-sm ${error ? 'text-red-400' : 'text-slate-400'}`}>Sign Here</div>}
+      {!signatureData && <div className={`absolute inset-0 flex items-center justify-center pointer-events-none text-sm ${error ? 'text-red-600 font-bold' : 'text-slate-400'}`}>{error ? 'Signature Required' : 'Sign Here'}</div>}
       <canvas
         ref={canvasRef}
         className="w-full h-full cursor-crosshair"
@@ -484,6 +484,7 @@ export default function App() {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
+    // Clear error for this field when user types
     if (fieldErrors[name]) {
       setFieldErrors(prev => {
         const newErrors = { ...prev };
