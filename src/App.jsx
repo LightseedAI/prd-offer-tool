@@ -592,10 +592,15 @@ export default function App() {
     
     const payload = {
       ...formData,
-      // Pass through new agent details if they exist on the agent object
+      
+      // 1. Add the logo URL here
+      logoUrl: logoUrl, 
+
+      // 2. Pass through agent details (using the latest from the database if available)
       agentMobile: currentAgent?.mobile || formData.agentMobile || '',
       agentTitle: currentAgent?.title || formData.agentTitle || '',
       
+      // 3. Explicitly list the rest to ensure formatting
       depositAmount: formData.depositAmount, 
       depositTerms: formData.depositTerms, 
       financeDate: formData.financeDate, 
