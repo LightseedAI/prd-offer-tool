@@ -657,35 +657,50 @@ export default function App() {
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!dbRef.current) { alert("Database not connected."); return; }
-    if (file.size > 800000) {
-      alert("File too large. Max 800KB.");
+    if (!dbRef.current || !storageRef.current) { alert("Database not connected."); return; }
+    
+    // File size check (still good to keep)
+    if (file.size > 2000000) { // Increased limit to 2MB since Storage handles it better
+      alert("File too large. Max 2MB.");
       if (logoInputRef.current) logoInputRef.current.value = '';
       return;
     }
+
     const logoName = newLogoName.trim() || `Logo ${new Date().toLocaleDateString()}`;
     setIsUploadingLogo(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64 = reader.result;
-        await addDoc(collection(dbRef.current, "logos"), {
-          name: logoName,
-          url: base64,
-          isDefault: false,
-          uploadedAt: new Date().toISOString()
-        });
-        setTempLogoUrl(base64);
-        setNewLogoName('');
-        alert("Logo uploaded!");
-      } catch (err) {
-        console.error(err);
-        alert("Save failed: " + err.message);
-      } finally {
-        setIsUploadingLogo(false);
-        if (logoInputRef.current) logoInputRef.current.value = '';
-      }
-    };
+
+    try {
+      // 1. Create a reference in Firebase Storage (e.g., logos/my-logo-12345.png)
+      const fileExt = file.name.split('.').pop();
+      const fileName = `logos/logo-${Date.now()}.${fileExt}`;
+      const logoStorageRef = ref(storageRef.current, fileName);
+
+      // 2. Upload the file
+      const snapshot = await uploadBytes(logoStorageRef, file);
+
+      // 3. Get the public Download URL (The https:// link)
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      // 4. Save THAT URL to Firestore (instead of the massive Base64 string)
+      await addDoc(collection(dbRef.current, "logos"), {
+        name: logoName,
+        url: downloadURL, // <--- This is now a short URL, not a huge string
+        isDefault: false,
+        uploadedAt: new Date().toISOString()
+      });
+
+      setTempLogoUrl(downloadURL);
+      setNewLogoName('');
+      alert("Logo uploaded successfully!");
+
+    } catch (err) {
+      console.error(err);
+      alert("Upload failed: " + err.message);
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
     reader.readAsDataURL(file);
   };
 
