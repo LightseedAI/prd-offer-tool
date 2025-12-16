@@ -12,7 +12,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 // CONFIGURATION
 // ==============================================================================
 
-const CONST_GOOGLE_MAPS_KEY = "AIzaSyBZkZwy9O2THIjqA-liZJCPAuoawV0kDvw"; 
+const CONST_GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const CONST_WEBHOOK_URL = "https://n8n.srv971972.hstgr.cloud/webhook/prd-offer-form";
 
 // Moved to env variable for security, but defaults to your provided key if env is missing
