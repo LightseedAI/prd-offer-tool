@@ -5,6 +5,8 @@ import { pdf } from '@react-pdf/renderer';
 import { OfferPdfDocument } from './OfferPdf';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
+// ADDED STORAGE IMPORTS HERE
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ==============================================================================
 // CONFIGURATION
@@ -244,6 +246,10 @@ export default function App() {
   const [isUploadingAgentPhoto, setIsUploadingAgentPhoto] = useState(false);
   const [newLogoName, setNewLogoName] = useState('');
   
+  // NEW STATE FOR FILE UPLOADS
+  const [photoFile, setPhotoFile] = useState(null); 
+  const [editPhotoFile, setEditPhotoFile] = useState(null);
+  
   // Edit Agent State
   const [editingAgent, setEditingAgent] = useState(null);
   const [editAgentName, setEditAgentName] = useState('');
@@ -267,7 +273,11 @@ export default function App() {
   const agentAddressInputRef = useRef(null);
   const autocompleteInstance = useRef(null);
   const agentAutocompleteInstance = useRef(null);
+  
+  // FIREBASE REFS
   const dbRef = useRef(null);
+  const storageRef = useRef(null); // Ref for Storage
+  
   const logoInputRef = useRef(null);
   const newAgentPhotoInputRef = useRef(null);
   const editAgentPhotoInputRef = useRef(null);
@@ -282,6 +292,7 @@ export default function App() {
       try {
         const app = initializeApp(CONST_FIREBASE_CONFIG);
         dbRef.current = getFirestore(app);
+        storageRef.current = getStorage(app); // INITIALIZE STORAGE
         console.log("Firebase Connected");
 
         const qAgents = query(collection(dbRef.current, "agents"), orderBy("name"));
@@ -404,56 +415,51 @@ export default function App() {
     }
   }, [showAdminPanel, adminTab, isMapsLoaded, mapsError]);
 
- // Updated useEffect to safely load Agent Photo from URL or Shortlink
- useEffect(() => {
-  const loadFromUrl = async () => {
-    // 1. Wait for agents to load from Firebase first
-    if (agentsList.length === 0) return;
+  useEffect(() => {
+    const loadFromUrl = async () => {
+      if (agentsList.length === 0) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
-    
-    let foundAgentName = '';
-    let foundAddress = '';
-
-    // Check Shortlink ID (QR Code)
-    if (id && dbRef.current) {
-      setIsPrefilled(true);
-      try {
-        const snap = await getDoc(doc(dbRef.current, "shortlinks", id));
-        if (snap.exists()) {
-          const data = snap.data();
-          foundAgentName = data.agent || '';
-          foundAddress = data.address || '';
-        }
-      } catch (e) { console.error(e); }
-    } 
-    // Check Direct URL Params
-    else {
-      foundAgentName = params.get('agent') || params.get('a') || '';
-      foundAddress = params.get('address') || params.get('p') || '';
-      if (foundAgentName || foundAddress) setIsPrefilled(true);
-    }
-
-    // 2. If we found an agent name, look up their details (Photo & Email)
-    if (foundAgentName) {
-      const agentDetails = agentsList.find(a => a.name === foundAgentName);
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
       
-      setFormData(prev => ({ 
-        ...prev, 
-        agentName: foundAgentName,
-        propertyAddress: foundAddress || prev.propertyAddress,
-        // Use the found email/photo, or keep existing if not found
-        agentEmail: agentDetails ? agentDetails.email : prev.agentEmail,
-        agentPhoto: agentDetails ? agentDetails.photo : '' // <--- CRITICAL FIX
-      }));
-    } else if (foundAddress) {
-      setFormData(prev => ({ ...prev, propertyAddress: foundAddress }));
-    }
-  };
-  
-  loadFromUrl();
-}, [agentsList]); // <--- Reruns when Firebase delivers the agents list
+      let foundAgentName = '';
+      let foundAddress = '';
+
+      if (id && dbRef.current) {
+        setIsPrefilled(true);
+        try {
+          const snap = await getDoc(doc(dbRef.current, "shortlinks", id));
+          if (snap.exists()) {
+            const data = snap.data();
+            foundAgentName = data.agent || '';
+            foundAddress = data.address || '';
+          }
+        } catch (e) { console.error(e); }
+      } 
+      else {
+        foundAgentName = params.get('agent') || params.get('a') || '';
+        foundAddress = params.get('address') || params.get('p') || '';
+        if (foundAgentName || foundAddress) setIsPrefilled(true);
+      }
+
+      if (foundAgentName) {
+        const agentDetails = agentsList.find(a => a.name === foundAgentName);
+        
+        setFormData(prev => ({ 
+          ...prev, 
+          agentName: foundAgentName,
+          propertyAddress: foundAddress || prev.propertyAddress,
+          agentEmail: agentDetails ? agentDetails.email : prev.agentEmail,
+          agentPhoto: agentDetails ? agentDetails.photo : ''
+        }));
+      } else if (foundAddress) {
+        setFormData(prev => ({ ...prev, propertyAddress: foundAddress }));
+      }
+    };
+    
+    loadFromUrl();
+  }, [agentsList]);
+
   // ==============================================================================
   // HANDLERS
   // ==============================================================================
@@ -486,7 +492,7 @@ export default function App() {
       ...prev, 
       agentName: e.target.value, 
       agentEmail: selected ? selected.email : '',
-      agentPhoto: selected ? selected.photo : '' // <--- Ensures photo is saved
+      agentPhoto: selected ? selected.photo : ''
     }));
   };
 
@@ -663,14 +669,38 @@ export default function App() {
     try { await deleteDoc(doc(dbRef.current, "logos", logoId)); } catch (e) { alert("Delete failed."); }
   };
 
+  // UPDATED: Uploads to Firebase Storage
   const handleAddAgent = async () => {
     if (!newAgentName || !newAgentEmail || !dbRef.current) return;
+    setIsUploadingAgentPhoto(true);
+
     try {
+      let finalPhotoUrl = newAgentPhoto || ''; // Default to existing base64 string if no file
+
+      // IF a file was selected, upload it to Firebase Storage
+      if (photoFile && storageRef.current) {
+        const imageRef = ref(storageRef.current, `agent-photos/${Date.now()}-${photoFile.name}`);
+        const snapshot = await uploadBytes(imageRef, photoFile);
+        finalPhotoUrl = await getDownloadURL(snapshot.ref);
+      }
+
       await addDoc(collection(dbRef.current, "agents"), {
-        name: newAgentName, email: newAgentEmail, photo: newAgentPhoto || ''
+        name: newAgentName,
+        email: newAgentEmail,
+        photo: finalPhotoUrl
       });
-      setNewAgentName(''); setNewAgentEmail(''); setNewAgentPhoto('');
-    } catch (e) { alert("Add failed."); }
+      
+      // Cleanup
+      setNewAgentName(''); 
+      setNewAgentEmail(''); 
+      setNewAgentPhoto('');
+      setPhotoFile(null);
+    } catch (e) { 
+      console.error(e);
+      alert("Add failed."); 
+    } finally {
+      setIsUploadingAgentPhoto(false);
+    }
   };
 
   const handleEditAgent = (agent) => {
@@ -678,66 +708,89 @@ export default function App() {
     setEditAgentName(agent.name);
     setEditAgentEmail(agent.email);
     setEditAgentPhoto(agent.photo || '');
+    setEditPhotoFile(null); // Reset any file input
   };
 
+  // UPDATED: Uploads to Firebase Storage
   const handleSaveAgent = async () => {
     if (!editingAgent || !dbRef.current) return;
+    setIsUploadingAgentPhoto(true);
+
     try {
+      let finalPhotoUrl = editAgentPhoto; // Default to keeping the old photo
+
+      // IF a new file was selected during edit, upload it
+      if (editPhotoFile && storageRef.current) {
+        const imageRef = ref(storageRef.current, `agent-photos/${Date.now()}-${editPhotoFile.name}`);
+        const snapshot = await uploadBytes(imageRef, editPhotoFile);
+        finalPhotoUrl = await getDownloadURL(snapshot.ref);
+      }
+
       await updateDoc(doc(dbRef.current, "agents", editingAgent), {
-        name: editAgentName, email: editAgentEmail, photo: editAgentPhoto
+        name: editAgentName, 
+        email: editAgentEmail, 
+        photo: finalPhotoUrl
       });
+      
       setEditingAgent(null);
-    } catch (e) { alert("Update failed."); }
+      setEditPhotoFile(null);
+    } catch (e) { 
+      console.error(e);
+      alert("Update failed."); 
+    } finally {
+      setIsUploadingAgentPhoto(false);
+    }
   };
 
-  const handleCancelEdit = () => setEditingAgent(null);
+  const handleCancelEdit = () => {
+    setEditingAgent(null);
+    setEditPhotoFile(null);
+  };
 
   const handleDeleteAgent = async (id) => {
     if (!dbRef.current || !id) return;
     if (window.confirm("Remove Agent?")) await deleteDoc(doc(dbRef.current, "agents", id));
   };
 
+  // UPDATED: Saves file to state
   const handleNewAgentPhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 500000) {
-      alert("Photo too large. Max 500KB. Yours is " + Math.round(file.size / 1000) + "KB");
+    if (file.size > 800000) {
+      alert("Photo too large. Max 800KB.");
       if (newAgentPhotoInputRef.current) newAgentPhotoInputRef.current.value = '';
       return;
     }
-    setIsUploadingAgentPhoto(true);
+    
+    // Save raw file for upload
+    setPhotoFile(file);
+
+    // Create preview
     const reader = new FileReader();
     reader.onload = () => {
       setNewAgentPhoto(reader.result);
-      setIsUploadingAgentPhoto(false);
-      if (newAgentPhotoInputRef.current) newAgentPhotoInputRef.current.value = '';
-    };
-    reader.onerror = () => {
-      alert("Failed to read file");
-      setIsUploadingAgentPhoto(false);
       if (newAgentPhotoInputRef.current) newAgentPhotoInputRef.current.value = '';
     };
     reader.readAsDataURL(file);
   };
 
+  // UPDATED: Saves file to state
   const handleEditAgentPhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 500000) {
-      alert("Photo too large. Max 500KB. Yours is " + Math.round(file.size / 1000) + "KB");
+    if (file.size > 800000) {
+      alert("Photo too large. Max 800KB.");
       if (editAgentPhotoInputRef.current) editAgentPhotoInputRef.current.value = '';
       return;
     }
-    setIsUploadingAgentPhoto(true);
+
+    // Save raw file for upload
+    setEditPhotoFile(file);
+
+    // Create preview
     const reader = new FileReader();
     reader.onload = () => {
       setEditAgentPhoto(reader.result);
-      setIsUploadingAgentPhoto(false);
-      if (editAgentPhotoInputRef.current) editAgentPhotoInputRef.current.value = '';
-    };
-    reader.onerror = () => {
-      alert("Failed to read file");
-      setIsUploadingAgentPhoto(false);
       if (editAgentPhotoInputRef.current) editAgentPhotoInputRef.current.value = '';
     };
     reader.readAsDataURL(file);
