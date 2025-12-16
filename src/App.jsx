@@ -593,20 +593,22 @@ export default function App() {
     const payload = {
       ...formData,
       
-      // 1. Add the logo URL here
+      // 1. Add the Logo URL
       logoUrl: logoUrl, 
 
-      // 2. Pass through agent details (using the latest from the database if available)
+      // 2. Add Agent Details (Check the agent list first, fallback to form data)
       agentMobile: currentAgent?.mobile || formData.agentMobile || '',
       agentTitle: currentAgent?.title || formData.agentTitle || '',
       
-      // 3. Explicitly list the rest to ensure formatting
+      // 3. Explicitly formatting numbers/dates to be safe
       depositAmount: formData.depositAmount, 
       depositTerms: formData.depositTerms, 
       financeDate: formData.financeDate, 
       inspectionDate: formData.inspectionDate, 
       settlementDate: formData.settlementDate, 
       submittedAt: new Date().toISOString(),
+      
+      // 4. PDF Data
       pdfBase64,
       pdfFilename: `Offer_${formData.propertyAddress.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${new Date().toISOString().split('T')[0]}.pdf`
     };
