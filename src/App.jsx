@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle } from 'lucide-react';
+import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle, Briefcase } from 'lucide-react';
 // FIREBASE & PDF IMPORTS
 import { pdf } from '@react-pdf/renderer';
 import { OfferPdfDocument } from './OfferPdf';
@@ -38,7 +38,7 @@ const DEFAULT_PLACEHOLDERS = {
 };
 
 const DEFAULT_AGENTS = [
-  { name: 'General Office', email: 'admin@prdburleighheads.com.au' }
+  { name: 'General Office', email: 'admin@prdburleighheads.com.au', mobile: '', title: 'Sales Team' }
 ];
 
 // ==============================================================================
@@ -196,6 +196,9 @@ export default function App() {
   const [formData, setFormData] = useState({
     agentName: '',
     agentEmail: '',
+    agentMobile: '', // Added
+    agentTitle: '',  // Added
+    agentPhoto: '',
     propertyAddress: '',
     buyerName1: '',
     buyerName2: '',
@@ -240,7 +243,10 @@ export default function App() {
   // Admin UI State
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentEmail, setNewAgentEmail] = useState('');
+  const [newAgentMobile, setNewAgentMobile] = useState(''); // Added
+  const [newAgentTitle, setNewAgentTitle] = useState('');   // Added
   const [newAgentPhoto, setNewAgentPhoto] = useState('');
+  
   const [tempLogoUrl, setTempLogoUrl] = useState('');
   const [tempPlaceholders, setTempPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -253,6 +259,8 @@ export default function App() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [editAgentName, setEditAgentName] = useState('');
   const [editAgentEmail, setEditAgentEmail] = useState('');
+  const [editAgentMobile, setEditAgentMobile] = useState(''); // Added
+  const [editAgentTitle, setEditAgentTitle] = useState('');   // Added
   const [editAgentPhoto, setEditAgentPhoto] = useState('');
 
   const [agentModeData, setAgentModeData] = useState({ agentName: '', propertyAddress: '' });
@@ -376,7 +384,6 @@ export default function App() {
         ac.addListener('place_changed', () => {
           const place = ac.getPlace();
           if (place.formatted_address) {
-            // FIX: Remove ', Australia' from the end
             const cleanAddress = place.formatted_address.replace(/, Australia$/, '');
             setFormData(prev => ({ ...prev, propertyAddress: cleanAddress }));
           }
@@ -385,7 +392,7 @@ export default function App() {
     }
   }, [isMapsLoaded, mapsError, isPrefilled]);
 
-  // Admin Panel Autocomplete Logic - Made more robust with timeouts and cleanup
+  // Admin Panel Autocomplete
   useEffect(() => {
     if (showAdminPanel && adminTab === 'qr' && isMapsLoaded && !mapsError) {
       if (agentAutocompleteInstance.current) {
@@ -406,7 +413,6 @@ export default function App() {
             ac.addListener('place_changed', () => {
               const place = ac.getPlace();
               if (place.formatted_address) {
-                // FIX: Remove ', Australia' from the end
                 const cleanAddress = place.formatted_address.replace(/, Australia$/, '');
                 setAgentModeData(prev => ({ ...prev, propertyAddress: cleanAddress }));
                 setShortLink('');
@@ -414,12 +420,9 @@ export default function App() {
               }
             });
             setAgentModeReady(true);
-            console.log("Admin Maps Loaded");
-          } catch (e) { 
-            console.error("Agent autocomplete error:", e); 
-          }
+          } catch (e) { console.error(e); }
         }
-      }, 500); // 500ms wait
+      }, 500); 
       
       return () => {
         clearTimeout(timer);
@@ -464,7 +467,9 @@ export default function App() {
           agentName: foundAgentName,
           propertyAddress: foundAddress || prev.propertyAddress,
           agentEmail: agentDetails ? agentDetails.email : prev.agentEmail,
-          agentPhoto: agentDetails ? agentDetails.photo : ''
+          agentPhoto: agentDetails ? agentDetails.photo : '',
+          agentMobile: agentDetails ? agentDetails.mobile : '',
+          agentTitle: agentDetails ? agentDetails.title : ''
         }));
       } else if (foundAddress) {
         setFormData(prev => ({ ...prev, propertyAddress: foundAddress }));
@@ -491,16 +496,9 @@ export default function App() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
-    // Clear error for this field when user types
     if (fieldErrors[name]) {
-      setFieldErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
+      setFieldErrors(prev => { const n = { ...prev }; delete n[name]; return n; });
     }
-
     if (name === 'purchasePrice' || name === 'depositAmount') {
       setFormData(prev => ({ ...prev, [name]: formatCurrency(value) }));
     } else {
@@ -517,7 +515,9 @@ export default function App() {
       ...prev, 
       agentName: e.target.value, 
       agentEmail: selected ? selected.email : '',
-      agentPhoto: selected ? selected.photo : ''
+      agentPhoto: selected ? selected.photo : '',
+      agentMobile: selected ? selected.mobile : '', // Grab mobile
+      agentTitle: selected ? selected.title : ''    // Grab title
     }));
   };
 
@@ -542,13 +542,10 @@ export default function App() {
     if (!formData.buyerAddress) errors.buyerAddress = 'Buyer Address is required';
     if (!formData.buyerPhone) errors.buyerPhone = 'Buyer Phone is required';
     if (!formData.buyerEmail) errors.buyerEmail = 'Buyer Email is required';
-    
     if (!formData.purchasePrice) errors.purchasePrice = 'Purchase Price is required';
     if (!formData.depositAmount) errors.depositAmount = 'Initial Deposit is required';
-    
     if (!formData.signature) errors.signature = 'Buyer 1 Signature is required';
     if (formData.buyerName2 && !formData.signature2) errors.signature2 = 'Buyer 2 Signature is required';
-    
     return errors;
   };
 
@@ -586,11 +583,19 @@ export default function App() {
     }
     
     setIsSubmitting(true);
+
+    // Ensure we have the latest details for the selected agent
+    const currentAgent = agentsList.find(a => a.name === formData.agentName);
+    
     let pdfBase64 = null;
     try { pdfBase64 = await generatePDF(); } catch (e) { console.error('PDF Error:', e); }
     
     const payload = {
       ...formData,
+      // Pass through new agent details if they exist on the agent object
+      agentMobile: currentAgent?.mobile || formData.agentMobile || '',
+      agentTitle: currentAgent?.title || formData.agentTitle || '',
+      
       depositAmount: formData.depositAmount, 
       depositTerms: formData.depositTerms, 
       financeDate: formData.financeDate, 
@@ -654,7 +659,7 @@ export default function App() {
     if (!file) return;
     if (!dbRef.current) { alert("Database not connected."); return; }
     if (file.size > 800000) {
-      alert("File too large. Max 800KB. Yours is " + Math.round(file.size / 1000) + "KB");
+      alert("File too large. Max 800KB.");
       if (logoInputRef.current) logoInputRef.current.value = '';
       return;
     }
@@ -692,6 +697,10 @@ export default function App() {
     try { await deleteDoc(doc(dbRef.current, "logos", logoId)); } catch (e) { alert("Delete failed."); }
   };
 
+  // --------------------------------------------------------------------------
+  // AGENT MANAGEMENT HANDLERS (UPDATED)
+  // --------------------------------------------------------------------------
+
   const handleAddAgent = async () => {
     if (!newAgentName || !newAgentEmail || !dbRef.current) return;
     setIsUploadingAgentPhoto(true);
@@ -705,9 +714,11 @@ export default function App() {
       await addDoc(collection(dbRef.current, "agents"), {
         name: newAgentName,
         email: newAgentEmail,
+        mobile: newAgentMobile, // New
+        title: newAgentTitle,   // New
         photo: finalPhotoUrl
       });
-      setNewAgentName(''); setNewAgentEmail(''); setNewAgentPhoto(''); setPhotoFile(null);
+      setNewAgentName(''); setNewAgentEmail(''); setNewAgentMobile(''); setNewAgentTitle(''); setNewAgentPhoto(''); setPhotoFile(null);
     } catch (e) { console.error(e); alert("Add failed."); } finally { setIsUploadingAgentPhoto(false); }
   };
 
@@ -715,6 +726,8 @@ export default function App() {
     setEditingAgent(agent.id);
     setEditAgentName(agent.name);
     setEditAgentEmail(agent.email);
+    setEditAgentMobile(agent.mobile || ''); // New
+    setEditAgentTitle(agent.title || '');   // New
     setEditAgentPhoto(agent.photo || '');
     setEditPhotoFile(null);
   };
@@ -730,7 +743,11 @@ export default function App() {
         finalPhotoUrl = await getDownloadURL(snapshot.ref);
       }
       await updateDoc(doc(dbRef.current, "agents", editingAgent), {
-        name: editAgentName, email: editAgentEmail, photo: finalPhotoUrl
+        name: editAgentName, 
+        email: editAgentEmail, 
+        mobile: editAgentMobile, // New
+        title: editAgentTitle,   // New
+        photo: finalPhotoUrl
       });
       setEditingAgent(null); setEditPhotoFile(null);
     } catch (e) { console.error(e); alert("Update failed."); } finally { setIsUploadingAgentPhoto(false); }
@@ -956,6 +973,7 @@ export default function App() {
                     <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Type className="w-4 h-4" /> Form Placeholders</h3>
                     <p className="text-xs text-slate-500 mb-3">Leave empty for no placeholder.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Placeholder fields (unchanged) */}
                       <div>
                         <label className="text-xs text-slate-500 block mb-1">Purchase Price</label>
                         <div className="relative">
@@ -1005,7 +1023,7 @@ export default function App() {
               {/* TEAM TAB */}
               {adminTab === 'team' && (
                 <div className="space-y-4">
-                  <p className="text-sm text-slate-600">Manage your team members.</p>
+                  <p className="text-sm text-slate-600">Manage your team members. Added fields will appear in the webhook data.</p>
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
                     <div className="max-h-80 overflow-y-auto">
                       {agentsList.map((a, i) => (
@@ -1016,7 +1034,12 @@ export default function App() {
                                 {editAgentPhoto ? (<img src={editAgentPhoto} alt="Preview" className="w-10 h-10 rounded-full object-cover" />) : (<div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400"><User className="w-5 h-5" /></div>)}
                                 <input type="text" value={editAgentName} onChange={(e) => setEditAgentName(e.target.value)} className="flex-1 border border-slate-300 rounded p-1.5 text-sm" placeholder="Name" />
                               </div>
-                              <input type="email" value={editAgentEmail} onChange={(e) => setEditAgentEmail(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Email" />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input type="email" value={editAgentEmail} onChange={(e) => setEditAgentEmail(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Email" />
+                                <input type="tel" value={editAgentMobile} onChange={(e) => setEditAgentMobile(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Mobile" />
+                              </div>
+                              <input type="text" value={editAgentTitle} onChange={(e) => setEditAgentTitle(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Job Title (e.g. Sales Associate)" />
+                              
                               <div className="space-y-1">
                                 <input 
                                   type="file" 
@@ -1031,9 +1054,8 @@ export default function App() {
                                   className="w-full bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-700 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
                                 >
                                   <Upload className="w-3 h-3" />
-                                  {isUploadingAgentPhoto ? 'Uploading...' : 'Upload Photo'}
+                                  {isUploadingAgentPhoto ? 'Uploading...' : 'Change Photo'}
                                 </button>
-                                {editAgentPhoto && <p className="text-xs text-green-600">✓ Photo ready</p>}
                               </div>
                               <div className="flex gap-2">
                                 <button onClick={handleSaveAgent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1"><Check className="w-3 h-3" /> Save</button>
@@ -1045,7 +1067,7 @@ export default function App() {
                               {a.photo ? (<img src={a.photo} alt={a.name} className="w-10 h-10 rounded-full object-cover" />) : (<div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400"><User className="w-5 h-5" /></div>)}
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-bold text-slate-800 truncate">{a.name}</div>
-                                <div className="text-xs text-slate-500 truncate">{a.email}</div>
+                                <div className="text-xs text-slate-500 truncate">{a.title || 'Agent'}</div>
                               </div>
                               {a.id && (
                                 <div className="flex gap-1">
@@ -1059,21 +1081,27 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  
+                  {/* ADD NEW AGENT FORM */}
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                     <h4 className="text-sm font-bold text-slate-700 mb-3">Add New Agent</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input type="text" placeholder="Name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
-                      <input type="email" placeholder="Email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      <input 
-                        type="file" 
-                        ref={newAgentPhotoInputRef}
-                        onChange={handleNewAgentPhotoUpload}
-                        accept="image/*"
-                        className="hidden"
-                      />
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input type="text" placeholder="Full Name *" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                        <input type="email" placeholder="Email *" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input type="tel" placeholder="Mobile Number" value={newAgentMobile} onChange={(e) => setNewAgentMobile(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                        <input type="text" placeholder="Job Title (e.g. Director)" value={newAgentTitle} onChange={(e) => setNewAgentTitle(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                      </div>
                       <div className="flex items-center gap-2">
+                        <input 
+                          type="file" 
+                          ref={newAgentPhotoInputRef}
+                          onChange={handleNewAgentPhotoUpload}
+                          accept="image/*"
+                          className="hidden"
+                        />
                         {newAgentPhoto && (
                           <img src={newAgentPhoto} alt="Preview" className="w-10 h-10 rounded-full object-cover" />
                         )}
@@ -1086,8 +1114,8 @@ export default function App() {
                           {isUploadingAgentPhoto ? 'Uploading...' : newAgentPhoto ? 'Change Photo' : 'Upload Photo (Optional)'}
                         </button>
                       </div>
+                      <button onClick={handleAddAgent} disabled={!newAgentName || !newAgentEmail} className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Add Agent</button>
                     </div>
-                    <button onClick={handleAddAgent} disabled={!newAgentName || !newAgentEmail} className="mt-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Add Agent</button>
                   </div>
                 </div>
               )}
@@ -1099,23 +1127,39 @@ export default function App() {
       {/* MAIN FORM */}
       <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
         <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
-          <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
-            <img 
-              src={logoUrl} 
-              alt="Logo" 
-              className="h-auto w-full max-h-16 object-contain" 
-              style={{ aspectRatio: 'auto' }}
-            />
-          </div>
-          <div className="text-right ml-4">
-            <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
-            <p className="text-sm text-slate-500">Official Letter of Offer</p>
+          {/* LEFT COLUMN: Logo & Agent Info */}
+          <div className="flex flex-col gap-4 max-w-[50%]">
+            <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
+              <img 
+                src={logoUrl} 
+                alt="Logo" 
+                className="h-auto w-full max-h-16 object-contain origin-left" 
+                style={{ aspectRatio: 'auto' }}
+              />
+            </div>
+            
+            {/* AGENT PROFILE - MOVED TO LEFT */}
             {formData.agentName && (
-              <div className="flex items-center justify-end gap-2 mt-2">
-                {selectedAgent?.photo && (<img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 rounded-full object-cover" />)}
-                <p className="text-xs text-slate-600 font-medium bg-slate-100 p-1 rounded">Agent: {formData.agentName}</p>
+              <div className="flex items-center gap-3 mt-2">
+                {selectedAgent?.photo ? (
+                  <img src={selectedAgent.photo} alt={formData.agentName} className="w-12 h-12 rounded-full object-cover border border-slate-100" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                    <User className="w-6 h-6" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-bold text-slate-800 leading-tight">{formData.agentName}</p>
+                  {selectedAgent?.title && <p className="text-xs text-slate-500">{selectedAgent.title}</p>}
+                </div>
               </div>
             )}
+          </div>
+
+          {/* RIGHT COLUMN: Document Title */}
+          <div className="text-right">
+            <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
+            <p className="text-sm text-slate-500">Official Letter of Offer</p>
           </div>
         </header>
 
