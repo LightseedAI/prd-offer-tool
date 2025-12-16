@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle } from 'lucide-react';
 // FIREBASE & PDF IMPORTS
-import {QD, pdf } from '@react-pdf/renderer';
+import { pdf } from '@react-pdf/renderer';
 import { OfferPdfDocument } from './OfferPdf';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
@@ -512,7 +512,7 @@ export default function App() {
     }));
   };
 
-  constDv handleSignatureEnd = (field, dataUrl) => {
+  const handleSignatureEnd = (field, dataUrl) => {
     if (fieldErrors[field]) {
       setFieldErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
     }
@@ -565,7 +565,7 @@ export default function App() {
     }
   };
 
-  constQb handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFieldErrors({}); 
     
@@ -1156,7 +1156,7 @@ export default function App() {
           )}
 
           <SectionHeader icon={Building} title="Property Details" />
-          <InputField label="Property Address" name="propertyAddress"Kv value={formData.propertyAddress} onChange={handleChange} placeholder={isMapsLoaded && !mapsError ? "Start typing address..." : "e.g. 4D/238 The Esplanade"} className="w-full" required readOnly={isPrefilled} inputRef={addressInputRef} icon={isMapsLoaded && !mapsError ? MapPin : null} error={!!fieldErrors.propertyAddress} />
+          <InputField label="Property Address" name="propertyAddress" value={formData.propertyAddress} onChange={handleChange} placeholder={isMapsLoaded && !mapsError ? "Start typing address..." : "e.g. 4D/238 The Esplanade"} className="w-full" required readOnly={isPrefilled} inputRef={addressInputRef} icon={isMapsLoaded && !mapsError ? MapPin : null} error={!!fieldErrors.propertyAddress} />
 
           <SectionHeader icon={User} title="Buyer Details" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
