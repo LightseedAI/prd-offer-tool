@@ -654,13 +654,16 @@ export default function App() {
     } catch (e) { alert("Save failed."); console.error(e); }
   };
 
+  // --------------------------------------------------------------------------
+  // LOGO UPLOAD (UPDATED TO USE STORAGE)
+  // --------------------------------------------------------------------------
+
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!dbRef.current || !storageRef.current) { alert("Database not connected."); return; }
     
-    // File size check (still good to keep)
-    if (file.size > 2000000) { // Increased limit to 2MB since Storage handles it better
+    if (file.size > 2000000) { 
       alert("File too large. Max 2MB.");
       if (logoInputRef.current) logoInputRef.current.value = '';
       return;
@@ -670,21 +673,16 @@ export default function App() {
     setIsUploadingLogo(true);
 
     try {
-      // 1. Create a reference in Firebase Storage (e.g., logos/my-logo-12345.png)
       const fileExt = file.name.split('.').pop();
       const fileName = `logos/logo-${Date.now()}.${fileExt}`;
       const logoStorageRef = ref(storageRef.current, fileName);
 
-      // 2. Upload the file
       const snapshot = await uploadBytes(logoStorageRef, file);
-
-      // 3. Get the public Download URL (The https:// link)
       const downloadURL = await getDownloadURL(snapshot.ref);
 
-      // 4. Save THAT URL to Firestore (instead of the massive Base64 string)
       await addDoc(collection(dbRef.current, "logos"), {
         name: logoName,
-        url: downloadURL, // <--- This is now a short URL, not a huge string
+        url: downloadURL,
         isDefault: false,
         uploadedAt: new Date().toISOString()
       });
@@ -700,8 +698,6 @@ export default function App() {
       setIsUploadingLogo(false);
       if (logoInputRef.current) logoInputRef.current.value = '';
     }
-  };
-    reader.readAsDataURL(file);
   };
 
   const handleSelectLogo = (url) => setTempLogoUrl(url);
@@ -722,18 +718,24 @@ export default function App() {
     try {
       let finalPhotoUrl = newAgentPhoto || '';
       if (photoFile && storageRef.current) {
-        const imageRef = ref(storageRef.current, `agent-photos/${Date.now()}-${photoFile.name}`);
+        // Clean filename logic
+        const cleanName = newAgentName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const fileExt = photoFile.name.split('.').pop();
+        const fileName = `${cleanName}-${Date.now()}.${fileExt}`;
+        const imageRef = ref(storageRef.current, `agents/${fileName}`);
+        
         const snapshot = await uploadBytes(imageRef, photoFile);
         finalPhotoUrl = await getDownloadURL(snapshot.ref);
       }
       await addDoc(collection(dbRef.current, "agents"), {
         name: newAgentName,
         email: newAgentEmail,
-        mobile: newAgentMobile, // New
-        title: newAgentTitle,   // New
+        mobile: newAgentMobile,
+        title: newAgentTitle,
         photo: finalPhotoUrl
       });
       setNewAgentName(''); setNewAgentEmail(''); setNewAgentMobile(''); setNewAgentTitle(''); setNewAgentPhoto(''); setPhotoFile(null);
+      alert("Agent added successfully!");
     } catch (e) { console.error(e); alert("Add failed."); } finally { setIsUploadingAgentPhoto(false); }
   };
 
@@ -741,8 +743,8 @@ export default function App() {
     setEditingAgent(agent.id);
     setEditAgentName(agent.name);
     setEditAgentEmail(agent.email);
-    setEditAgentMobile(agent.mobile || ''); // New
-    setEditAgentTitle(agent.title || '');   // New
+    setEditAgentMobile(agent.mobile || '');
+    setEditAgentTitle(agent.title || '');
     setEditAgentPhoto(agent.photo || '');
     setEditPhotoFile(null);
   };
@@ -753,18 +755,23 @@ export default function App() {
     try {
       let finalPhotoUrl = editAgentPhoto;
       if (editPhotoFile && storageRef.current) {
-        const imageRef = ref(storageRef.current, `agent-photos/${Date.now()}-${editPhotoFile.name}`);
+        const cleanName = editAgentName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const fileExt = editPhotoFile.name.split('.').pop();
+        const fileName = `${cleanName}-${Date.now()}.${fileExt}`;
+        const imageRef = ref(storageRef.current, `agents/${fileName}`);
+        
         const snapshot = await uploadBytes(imageRef, editPhotoFile);
         finalPhotoUrl = await getDownloadURL(snapshot.ref);
       }
       await updateDoc(doc(dbRef.current, "agents", editingAgent), {
         name: editAgentName, 
         email: editAgentEmail, 
-        mobile: editAgentMobile, // New
-        title: editAgentTitle,   // New
+        mobile: editAgentMobile,
+        title: editAgentTitle,
         photo: finalPhotoUrl
       });
       setEditingAgent(null); setEditPhotoFile(null);
+      alert("Agent updated!");
     } catch (e) { console.error(e); alert("Update failed."); } finally { setIsUploadingAgentPhoto(false); }
   };
 
