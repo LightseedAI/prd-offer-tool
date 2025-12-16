@@ -4,23 +4,39 @@
 
 /* Custom styles for the PRD Offer Form */
 
-/* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
 
-/* Custom focus styles */
 *:focus {
   outline: none;
 }
 
-/* Print styles */
+/* --- FIX FOR POINT 3: Red Highlight Class --- */
+/* We will toggle this class in React when validation fails */
+.input-error {
+  border-color: #dc2626 !important; /* PRD Red */
+  border-width: 1px !important;
+  box-shadow: 0 0 0 1px #dc2626 !important; /* simulates ring */
+}
+
+/* --- FIX FOR POINT 4: Robust Mobile Printing --- */
 @media print {
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    background: white;
   }
   
+  /* Ensure the content is visible and flows naturally on paper */
+  body, #root {
+    width: 100%;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* Hide UI elements clearly */
   .print\:hidden {
     display: none !important;
   }
@@ -28,9 +44,14 @@ html {
   .print\:shadow-none {
     box-shadow: none !important;
   }
+
+  /* Fix for text colors in print */
+  * {
+    color: #000 !important;
+  }
 }
 
-/* Custom scrollbar for better UX */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
