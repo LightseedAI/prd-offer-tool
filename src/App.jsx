@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle } from 'lucide-react';
 // FIREBASE & PDF IMPORTS
-import { pdf } from '@react-pdf/renderer';
+import {QD, pdf } from '@react-pdf/renderer';
 import { OfferPdfDocument } from './OfferPdf';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, deleteDoc, onSnapshot, query, orderBy, updateDoc } from "firebase/firestore";
@@ -69,7 +69,6 @@ const SectionHeader = ({ icon: Icon, title }) => (
   </div>
 );
 
-// FIX POINT 3: Added 'error' prop to toggle the red border class
 const InputField = ({ label, name, type = "text", value, onChange, placeholder, className = "", required = false, inputRef, icon: Icon, readOnly = false, prefix, error = false }) => (
   <div className={`flex flex-col ${className}`}>
     <label className="text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
@@ -88,7 +87,6 @@ const InputField = ({ label, name, type = "text", value, onChange, placeholder, 
         onChange={onChange}
         placeholder={placeholder}
         readOnly={readOnly}
-        // Updated class logic for red error border
         className={`border rounded p-2 text-sm focus:outline-none transition-colors w-full ${
           prefix ? 'pl-7' : ''
         } ${
@@ -227,8 +225,6 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
-  
-  // FIX POINT 3: Changed to an object to track errors by field name
   const [fieldErrors, setFieldErrors] = useState({});
   
   // Data State
@@ -367,6 +363,7 @@ export default function App() {
     document.head.appendChild(script);
   }, []);
 
+  // Main Form Autocomplete
   useEffect(() => {
     if (isMapsLoaded && !mapsError && addressInputRef.current && !autocompleteInstance.current && !isPrefilled) {
       try {
@@ -381,6 +378,49 @@ export default function App() {
       } catch (e) { console.error(e); }
     }
   }, [isMapsLoaded, mapsError, isPrefilled]);
+
+  // Admin Panel Autocomplete Logic - Made more robust with timeouts and cleanup
+  useEffect(() => {
+    if (showAdminPanel && adminTab === 'qr' && isMapsLoaded && !mapsError) {
+      if (agentAutocompleteInstance.current) {
+        window.google.maps.event.clearInstanceListeners(agentAutocompleteInstance.current);
+        agentAutocompleteInstance.current = null;
+      }
+      setAgentModeReady(false);
+      
+      const timer = setTimeout(() => {
+        if (agentAddressInputRef.current) {
+          try {
+            const ac = new window.google.maps.places.Autocomplete(agentAddressInputRef.current, {
+              types: ['address'], 
+              componentRestrictions: { country: 'au' }, 
+              fields: ['formatted_address']
+            });
+            agentAutocompleteInstance.current = ac;
+            ac.addListener('place_changed', () => {
+              const place = ac.getPlace();
+              if (place.formatted_address) {
+                setAgentModeData(prev => ({ ...prev, propertyAddress: place.formatted_address }));
+                setShortLink('');
+                setQrGenerated(false);
+              }
+            });
+            setAgentModeReady(true);
+            console.log("Admin Maps Loaded");
+          } catch (e) { 
+            console.error("Agent autocomplete error:", e); 
+          }
+        }
+      }, 500); // 500ms wait
+      
+      return () => {
+        clearTimeout(timer);
+        if (agentAutocompleteInstance.current) {
+          window.google.maps.event.clearInstanceListeners(agentAutocompleteInstance.current);
+        }
+      };
+    }
+  }, [showAdminPanel, adminTab, isMapsLoaded, mapsError]);
 
   useEffect(() => {
     const loadFromUrl = async () => {
@@ -444,7 +484,6 @@ export default function App() {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
-    // FIX POINT 3: Clear specific field error on change so border red goes away
     if (fieldErrors[name]) {
       setFieldErrors(prev => {
         const newErrors = { ...prev };
@@ -473,7 +512,7 @@ export default function App() {
     }));
   };
 
-  const handleSignatureEnd = (field, dataUrl) => {
+  constDv handleSignatureEnd = (field, dataUrl) => {
     if (fieldErrors[field]) {
       setFieldErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
     }
@@ -482,12 +521,10 @@ export default function App() {
 
   const handleSignatureClear = (field) => setFormData(prev => ({ ...prev, [field]: null }));
   
-  // FIX POINT 4: Safe Print Function for Mobile
   const handlePrint = () => {
     window.print();
   };
 
-  // FIX POINT 1: Strict Validation Logic
   const validateForm = () => {
     const errors = {};
     if (!formData.agentName) errors.agentName = 'Selling Agent is required';
@@ -497,15 +534,8 @@ export default function App() {
     if (!formData.buyerPhone) errors.buyerPhone = 'Buyer Phone is required';
     if (!formData.buyerEmail) errors.buyerEmail = 'Buyer Email is required';
     
-    // FIX POINT 1: Price and Deposit are now strictly required
     if (!formData.purchasePrice) errors.purchasePrice = 'Purchase Price is required';
     if (!formData.depositAmount) errors.depositAmount = 'Initial Deposit is required';
-    
-    // Only optional if the placeholder is empty? No, usually these are dates that are required.
-    // If you want them mandatory:
-    // if (!formData.financeDate) errors.financeDate = 'Finance Date is required';
-    // if (!formData.inspectionDate) errors.inspectionDate = 'Inspection Date is required';
-    // if (!formData.settlementDate) errors.settlementDate = 'Settlement Date is required';
     
     if (!formData.signature) errors.signature = 'Buyer 1 Signature is required';
     if (formData.buyerName2 && !formData.signature2) errors.signature2 = 'Buyer 2 Signature is required';
@@ -535,9 +565,9 @@ export default function App() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  constQb handleSubmit = async (e) => {
     e.preventDefault();
-    setFieldErrors({}); // Clear old global error state
+    setFieldErrors({}); 
     
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
@@ -550,14 +580,13 @@ export default function App() {
     let pdfBase64 = null;
     try { pdfBase64 = await generatePDF(); } catch (e) { console.error('PDF Error:', e); }
     
-    // FIX POINT 2: Removed fallback logic. If formData is empty, send empty string.
     const payload = {
       ...formData,
-      depositAmount: formData.depositAmount, // Strict. No fallback to calculated placeholder.
-      depositTerms: formData.depositTerms, // Strict.
-      financeDate: formData.financeDate, // Strict.
-      inspectionDate: formData.inspectionDate, // Strict.
-      settlementDate: formData.settlementDate, // Strict.
+      depositAmount: formData.depositAmount, 
+      depositTerms: formData.depositTerms, 
+      financeDate: formData.financeDate, 
+      inspectionDate: formData.inspectionDate, 
+      settlementDate: formData.settlementDate, 
       submittedAt: new Date().toISOString(),
       pdfBase64,
       pdfFilename: `Offer_${formData.propertyAddress.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${new Date().toISOString().split('T')[0]}.pdf`
@@ -577,7 +606,6 @@ export default function App() {
     setIsSubmitting(false);
   };
 
-  // ... (Rest of Admin Functions kept identical)
   const generateSmartLink = async () => {
     if (!agentModeData.agentName || !agentModeData.propertyAddress) return;
     setIsGeneratingLink(true);
@@ -781,7 +809,6 @@ export default function App() {
                 })} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
                   <Lock className="w-3 h-3" /> Admin
                 </button>
-                {/* FIX POINT 4: Ensure button type is explicit and styles handle print view */}
                 <button type="button" onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
                   <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
                 </button>
@@ -803,8 +830,7 @@ export default function App() {
                 <X className="w-6 h-6" />
               </button>
             </div>
-            {/* ... ADMIN CONTENT OMITTED FOR BREVITY, BUT KEPT IDENTICAL TO ORIGINAL ... */}
-            {/* The provided code includes the full admin panel logic as before */}
+            
             <div className="bg-slate-100 border-b border-slate-200 flex shrink-0">
               <button onClick={() => setAdminTab('qr')} className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 transition ${adminTab === 'qr' ? 'bg-white text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
                 <QrCode className="w-4 h-4" /> QR Generator
@@ -816,7 +842,9 @@ export default function App() {
                 <Users className="w-4 h-4" /> Team
               </button>
             </div>
+
             <div className="p-6 overflow-y-auto flex-1">
+              {/* QR TAB */}
               {adminTab === 'qr' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
@@ -860,7 +888,200 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {/* Other tabs omitted from display but included in logic above */}
+
+              {/* SETTINGS TAB */}
+              {adminTab === 'settings' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo</h3>
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className="w-32 h-16 bg-slate-100 border-2 border-red-500 rounded flex items-center justify-center p-2">
+                        <img src={tempLogoUrl || defaultLogoUrl} alt="Current Logo" className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-700 mb-1">Currently Selected</p>
+                        <p className="text-xs text-slate-500">Click a logo below to select it, then Save Settings.</p>
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                      <p className="text-xs font-bold text-slate-600 mb-2">Available Logos</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-40 overflow-y-auto">
+                        {logoGallery.map((logo) => (
+                          <div key={logo.id} className={`relative group cursor-pointer rounded border-2 p-1 transition-all ${tempLogoUrl === logo.url ? 'border-red-500 bg-red-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`} onClick={() => handleSelectLogo(logo.url)}>
+                            <div className="h-10 flex items-center justify-center">
+                              <img src={logo.url} alt={logo.name} className="max-h-full max-w-full object-contain" />
+                            </div>
+                            <p className="text-[10px] text-slate-500 truncate text-center mt-1">{logo.name}</p>
+                            {tempLogoUrl === logo.url && (
+                              <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5">
+                                <Check className="w-2 h-2 text-white" />
+                              </div>
+                            )}
+                            {!logo.isDefault && (
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteLogo(logo.id, logo.isDefault); }} className="absolute -top-1 -left-1 bg-white border border-slate-300 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:border-red-300">
+                                <X className="w-2 h-2 text-red-500" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1"><Plus className="w-3 h-3" /> Upload New Logo</p>
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="text-xs text-slate-500 block mb-1">Logo Name</label>
+                          <input type="text" value={newLogoName} onChange={(e) => setNewLogoName(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="e.g. Christmas 2025" />
+                        </div>
+                        <div>
+                          <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                          <button onClick={() => logoInputRef.current?.click()} disabled={isUploadingLogo} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold">
+                            {isUploadingLogo ? <Loader className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Upload
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Type className="w-4 h-4" /> Form Placeholders</h3>
+                    <p className="text-xs text-slate-500 mb-3">Leave empty for no placeholder.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Purchase Price</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                          <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, purchasePrice: formatCurrency(e.target.value) }))} className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" placeholder="e.g. 1,500,000" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Deposit Amount OR Percentage</label>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                            <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, depositAmount: formatCurrency(e.target.value), depositPercent: '' }))} className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" placeholder="e.g. 50,000" />
+                          </div>
+                          <div className="relative w-24">
+                            <input type="number" value={tempPlaceholders.depositPercent || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, depositPercent: e.target.value, depositAmount: '' }))} className="w-full border border-slate-300 rounded p-2 pr-6 text-sm" placeholder="%" min="0" max="100" />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Deposit Terms</label>
+                        <input type="text" value={tempPlaceholders.depositTerms || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, depositTerms: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Finance Date</label>
+                        <input type="text" value={tempPlaceholders.financeDate || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, financeDate: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Building & Pest Inspection</label>
+                        <input type="text" value={tempPlaceholders.inspectionDate || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, inspectionDate: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-1">Settlement Date</label>
+                        <input type="text" value={tempPlaceholders.settlementDate || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, settlementDate: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs text-slate-500 block mb-1">Special Conditions</label>
+                        <input type="text" value={tempPlaceholders.specialConditions || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, specialConditions: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-bold">Save Settings</button>
+                </div>
+              )}
+
+              {/* TEAM TAB */}
+              {adminTab === 'team' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600">Manage your team members.</p>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="max-h-80 overflow-y-auto">
+                      {agentsList.map((a, i) => (
+                        <div key={a.id || i} className="border-b border-slate-100 last:border-b-0">
+                          {editingAgent === a.id ? (
+                            <div className="p-3 bg-blue-50 space-y-2">
+                              <div className="flex items-center gap-2">
+                                {editAgentPhoto ? (<img src={editAgentPhoto} alt="Preview" className="w-10 h-10 rounded-full object-cover" />) : (<div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400"><User className="w-5 h-5" /></div>)}
+                                <input type="text" value={editAgentName} onChange={(e) => setEditAgentName(e.target.value)} className="flex-1 border border-slate-300 rounded p-1.5 text-sm" placeholder="Name" />
+                              </div>
+                              <input type="email" value={editAgentEmail} onChange={(e) => setEditAgentEmail(e.target.value)} className="w-full border border-slate-300 rounded p-1.5 text-sm" placeholder="Email" />
+                              <div className="space-y-1">
+                                <input 
+                                  type="file" 
+                                  ref={editAgentPhotoInputRef}
+                                  onChange={handleEditAgentPhotoUpload}
+                                  accept="image/*"
+                                  className="hidden"
+                                />
+                                <button 
+                                  onClick={() => editAgentPhotoInputRef.current?.click()}
+                                  disabled={isUploadingAgentPhoto}
+                                  className="w-full bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-700 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
+                                >
+                                  <Upload className="w-3 h-3" />
+                                  {isUploadingAgentPhoto ? 'Uploading...' : 'Upload Photo'}
+                                </button>
+                                {editAgentPhoto && <p className="text-xs text-green-600">✓ Photo ready</p>}
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={handleSaveAgent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1"><Check className="w-3 h-3" /> Save</button>
+                                <button onClick={handleCancelEdit} className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1"><X className="w-3 h-3" /> Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3 p-3 hover:bg-slate-50">
+                              {a.photo ? (<img src={a.photo} alt={a.name} className="w-10 h-10 rounded-full object-cover" />) : (<div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400"><User className="w-5 h-5" /></div>)}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-bold text-slate-800 truncate">{a.name}</div>
+                                <div className="text-xs text-slate-500 truncate">{a.email}</div>
+                              </div>
+                              {a.id && (
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleEditAgent(a)} className="text-slate-400 hover:text-blue-600 p-1" title="Edit"><Edit2 className="w-4 h-4" /></button>
+                                  <button onClick={() => handleDeleteAgent(a.id)} className="text-slate-400 hover:text-red-500 p-1" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h4 className="text-sm font-bold text-slate-700 mb-3">Add New Agent</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input type="text" placeholder="Name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                      <input type="email" placeholder="Email" value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} className="border border-slate-300 rounded p-2 text-sm" />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <input 
+                        type="file" 
+                        ref={newAgentPhotoInputRef}
+                        onChange={handleNewAgentPhotoUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <div className="flex items-center gap-2">
+                        {newAgentPhoto && (
+                          <img src={newAgentPhoto} alt="Preview" className="w-10 h-10 rounded-full object-cover" />
+                        )}
+                        <button 
+                          onClick={() => newAgentPhotoInputRef.current?.click()}
+                          disabled={isUploadingAgentPhoto}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-700 py-2 rounded text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                          <Upload className="w-4 h-4" />
+                          {isUploadingAgentPhoto ? 'Uploading...' : newAgentPhoto ? 'Change Photo' : 'Upload Photo (Optional)'}
+                        </button>
+                      </div>
+                    </div>
+                    <button onClick={handleAddAgent} disabled={!newAgentName || !newAgentEmail} className="mt-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Add Agent</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -935,7 +1156,7 @@ export default function App() {
           )}
 
           <SectionHeader icon={Building} title="Property Details" />
-          <InputField label="Property Address" name="propertyAddress" value={formData.propertyAddress} onChange={handleChange} placeholder={isMapsLoaded && !mapsError ? "Start typing address..." : "e.g. 4D/238 The Esplanade"} className="w-full" required readOnly={isPrefilled} inputRef={addressInputRef} icon={isMapsLoaded && !mapsError ? MapPin : null} error={!!fieldErrors.propertyAddress} />
+          <InputField label="Property Address" name="propertyAddress"Kv value={formData.propertyAddress} onChange={handleChange} placeholder={isMapsLoaded && !mapsError ? "Start typing address..." : "e.g. 4D/238 The Esplanade"} className="w-full" required readOnly={isPrefilled} inputRef={addressInputRef} icon={isMapsLoaded && !mapsError ? MapPin : null} error={!!fieldErrors.propertyAddress} />
 
           <SectionHeader icon={User} title="Buyer Details" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -955,7 +1176,6 @@ export default function App() {
 
           <SectionHeader icon={DollarSign} title="Price & Deposit" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* FIX POINT 1: Required props and error logic for Price & Deposit */}
             <InputField label="Purchase Price Offer" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required prefix="$" error={!!fieldErrors.purchasePrice} />
             <InputField label="Initial Deposit" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} prefix="$" required error={!!fieldErrors.depositAmount} />
             <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
