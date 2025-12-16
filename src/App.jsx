@@ -368,12 +368,18 @@ export default function App() {
     if (isMapsLoaded && !mapsError && addressInputRef.current && !autocompleteInstance.current && !isPrefilled) {
       try {
         const ac = new window.google.maps.places.Autocomplete(addressInputRef.current, {
-          types: ['address'], componentRestrictions: { country: 'au' }, fields: ['formatted_address']
+          types: ['address'], 
+          componentRestrictions: { country: 'au' }, 
+          fields: ['formatted_address']
         });
         autocompleteInstance.current = ac;
         ac.addListener('place_changed', () => {
           const place = ac.getPlace();
-          if (place.formatted_address) setFormData(prev => ({ ...prev, propertyAddress: place.formatted_address }));
+          if (place.formatted_address) {
+            // FIX: Remove ', Australia' from the end
+            const cleanAddress = place.formatted_address.replace(/, Australia$/, '');
+            setFormData(prev => ({ ...prev, propertyAddress: cleanAddress }));
+          }
         });
       } catch (e) { console.error(e); }
     }
@@ -400,7 +406,9 @@ export default function App() {
             ac.addListener('place_changed', () => {
               const place = ac.getPlace();
               if (place.formatted_address) {
-                setAgentModeData(prev => ({ ...prev, propertyAddress: place.formatted_address }));
+                // FIX: Remove ', Australia' from the end
+                const cleanAddress = place.formatted_address.replace(/, Australia$/, '');
+                setAgentModeData(prev => ({ ...prev, propertyAddress: cleanAddress }));
                 setShortLink('');
                 setQrGenerated(false);
               }
