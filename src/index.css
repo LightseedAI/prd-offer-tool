@@ -69,3 +69,32 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+/* Enhanced mobile optimizations */
+@media (max-width: 640px) {
+  /* Prevent form zoom on iOS */
+  input[type="text"], 
+  input[type="email"], 
+  input[type="tel"], 
+  select, 
+  textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Better touch targets */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Improve signature pad on mobile */
+  canvas {
+    touch-action: none;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 480px) {
+  .signature-canvas {
+    height: 120px !important;
+  }
+}

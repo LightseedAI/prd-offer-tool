@@ -151,21 +151,22 @@ const calculateProgress = (formData) => {
 // ==============================================================================
 
 // Progress Bar Component
-const ProgressBar = ({ formData }) => {
+const ProgressBar = ({ formData, isQRForm = false }) => {
   const progress = calculateProgress(formData);
   
   return (
-    <div className="sticky top-0 z-50 bg-white shadow-sm border-b border-slate-200 print:hidden">
-      <div className="max-w-4xl mx-auto p-4">
+    <div className={`sticky ${isQRForm ? 'top-0' : 'top-16'} z-50 bg-white shadow-sm border-b border-slate-200 print:hidden`}>
+      <div className="w-full px-3 py-3 sm:px-4 sm:py-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-slate-700">Form Progress</span>
-          <span className="text-sm text-slate-500">
-            {progress.completed} of {progress.total} required fields completed
+          <span className="text-xs sm:text-sm font-medium text-slate-700">Progress</span>
+          <span className="text-xs sm:text-sm text-slate-500">
+            <span className="hidden sm:inline">{progress.completed} of {progress.total} required fields completed</span>
+            <span className="sm:hidden">{progress.completed}/{progress.total} done</span>
           </span>
         </div>
-        <div className="w-full bg-slate-200 rounded-full h-2">
+        <div className="w-full bg-slate-200 rounded-full h-1.5 sm:h-2">
           <div 
-            className="bg-red-600 h-2 rounded-full transition-all duration-300 ease-in-out" 
+            className="bg-red-600 h-1.5 sm:h-2 rounded-full transition-all duration-300 ease-in-out" 
             style={{ width: `${progress.percentage}%` }}
           />
         </div>
@@ -177,10 +178,10 @@ const ProgressBar = ({ formData }) => {
 // Auto-save Indicator Component
 const AutoSaveIndicator = ({ show }) => {
   return (
-    <div className={`fixed bottom-4 right-4 z-50 transition-all duration-300 ${show ? 'opacity-100' : 'opacity-0'} print:hidden`}>
-      <div className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
+    <div className={`fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-50 transition-all duration-300 ${show ? 'opacity-100' : 'opacity-0'} print:hidden`}>
+      <div className="bg-green-500 text-white px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium flex items-center gap-1">
         <Check className="w-3 h-3" />
-        Draft saved
+        <span className="hidden xs:inline">Draft </span>saved
       </div>
     </div>
   );
@@ -589,8 +590,17 @@ export default function App() {
               setTempLogoUrl(data.logoUrl);
             }
             if (data.placeholders) {
-              setPlaceholders(prev => ({ ...prev, ...data.placeholders }));
-              setTempPlaceholders(prev => ({ ...prev, ...data.placeholders }));
+              const newPlaceholders = { ...DEFAULT_PLACEHOLDERS, ...data.placeholders };
+              setPlaceholders(newPlaceholders);
+              setTempPlaceholders(newPlaceholders);
+              
+              // Update formData with new deposit terms default if form is empty
+              setFormData(prev => ({
+                ...prev,
+                depositTerms: prev.depositTerms === DEFAULT_PLACEHOLDERS.depositTerms || !prev.depositTerms 
+                  ? newPlaceholders.depositTerms || DEFAULT_PLACEHOLDERS.depositTerms 
+                  : prev.depositTerms
+              }));
             }
           } else {
             await setDoc(docRef, {
@@ -1130,29 +1140,29 @@ export default function App() {
       `}</style>
 
       {/* Progress Bar */}
-      <ProgressBar formData={formData} />
+      <ProgressBar formData={formData} isQRForm={isQRCodeForm} />
 
       {/* Auto-save Indicator */}
       <AutoSaveIndicator show={showAutoSave} />
 
       {!isQRCodeForm && (
-        <nav className="bg-slate-900 text-white p-4 sticky top-16 z-40 shadow-md print:hidden">
+        <nav className="bg-slate-900 text-white p-3 sm:p-4 sticky top-0 z-40 shadow-md print:hidden">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-2">
-              {logoUrl && <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />}
+              {logoUrl && <img src={logoUrl} alt="Logo" className="h-6 sm:h-8 w-auto bg-white p-1 rounded" />}
               <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
             </div>
             {!isPrefilled && (
-              <div className="flex gap-2">
+              <div className="flex gap-1 sm:gap-2">
                 <button type="button" onClick={() => checkAdminAccess(() => {
                   setAgentModeData({ agentName: formData.agentName || '', propertyAddress: formData.propertyAddress || '' });
                   setShortLink(''); setQrGenerated(false);
                   setShowAdminPanel(true); setAdminTab('qr');
-                })} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition text-sm font-bold">
-                  <Lock className="w-3 h-3" /> Admin
+                })} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 rounded transition text-xs sm:text-sm font-bold">
+                  <Lock className="w-3 h-3" /> <span className="hidden xs:inline">Admin</span>
                 </button>
-                <button type="button" onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-sm">
-                  <Printer className="w-4 h-4" /><span className="hidden sm:inline">Print</span>
+                <button type="button" onClick={handlePrint} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-xs sm:text-sm">
+                  <Printer className="w-3 sm:w-4 h-3 sm:h-4" /><span className="hidden sm:inline">Print</span>
                 </button>
               </div>
             )}
@@ -1441,15 +1451,15 @@ export default function App() {
 
       {/* MAIN FORM */}
       <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
-        <header className="p-8 pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
+        <header className="p-4 sm:p-8 pb-3 sm:pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
           {/* LEFT COLUMN: Logo & Agent Info */}
-          <div className="flex flex-col gap-4 max-w-[50%]">
-            <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
+          <div className="flex flex-col gap-3 sm:gap-4 max-w-[50%]">
+            <div className="flex-shrink-0 max-w-[160px] sm:max-w-[200px] md:max-w-[250px]">
               {logoUrl && (
                 <img 
                   src={logoUrl} 
                   alt="Logo" 
-                  className="h-auto w-full max-h-16 object-contain origin-left" 
+                  className="h-auto w-full max-h-12 sm:max-h-16 object-contain origin-left" 
                   style={{ aspectRatio: 'auto' }}
                 />
               )}
@@ -1457,16 +1467,16 @@ export default function App() {
             
             {/* AGENT PROFILE */}
             {formData.agentName && (
-              <div className="flex items-center gap-3 mt-2">
+              <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-2">
                 {selectedAgent?.photo ? (
-                  <img src={selectedAgent.photo} alt={formData.agentName} className="w-12 h-12 rounded-full object-cover border border-slate-100" />
+                  <img src={selectedAgent.photo} alt={formData.agentName} className="w-8 h-8 sm:w-12 sm:h-12 rounded-full object-cover border border-slate-100" />
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                    <User className="w-6 h-6" />
+                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                    <User className="w-4 h-4 sm:w-6 sm:h-6" />
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-bold text-slate-800 leading-tight">{formData.agentName}</p>
+                  <p className="text-xs sm:text-sm font-bold text-slate-800 leading-tight">{formData.agentName}</p>
                   {selectedAgent?.title && <p className="text-xs text-slate-500">{selectedAgent.title}</p>}
                 </div>
               </div>
@@ -1475,18 +1485,18 @@ export default function App() {
 
           {/* RIGHT COLUMN: Document Title */}
           <div className="text-right">
-            <h2 className="text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
-            <p className="text-sm text-slate-500">Official Letter of Offer</p>
+            <h2 className="text-lg sm:text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
+            <p className="text-xs sm:text-sm text-slate-500">Official Letter of Offer</p>
           </div>
         </header>
 
         {Object.keys(fieldErrors).length > 0 && (
-          <div className="mx-8 mt-6 p-4 bg-red-50 border border-red-200 rounded-lg print:hidden">
-            <div className="flex items-start gap-3">
-              <div className="bg-red-100 p-2 rounded-full text-red-600"><AlertCircle className="w-5 h-5" /></div>
+          <div className="mx-4 sm:mx-8 mt-4 sm:mt-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg print:hidden">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <div className="bg-red-100 p-1.5 sm:p-2 rounded-full text-red-600"><AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" /></div>
               <div>
-                <h3 className="font-bold text-red-800">Please complete the following required fields:</h3>
-                <ul className="text-sm text-red-700 mt-2 list-disc list-inside">
+                <h3 className="font-bold text-red-800 text-sm sm:text-base">Please complete the following required fields:</h3>
+                <ul className="text-xs sm:text-sm text-red-700 mt-1 sm:mt-2 list-disc list-inside">
                   {Object.values(fieldErrors).map((error, i) => (<li key={i}>{error}</li>))}
                 </ul>
               </div>
@@ -1495,11 +1505,11 @@ export default function App() {
         )}
 
         {submitStatus === 'success' && (
-          <div className="mx-8 mt-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 print:hidden">
-            <div className="bg-green-100 p-2 rounded-full text-green-600"><Check className="w-5 h-5" /></div>
+          <div className="mx-4 sm:mx-8 mt-4 sm:mt-6 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2 sm:gap-3 print:hidden">
+            <div className="bg-green-100 p-1.5 sm:p-2 rounded-full text-green-600"><Check className="w-4 h-4 sm:w-5 sm:h-5" /></div>
             <div>
-              <h3 className="font-bold text-green-800">Offer Submitted Successfully!</h3>
-              <p className="text-sm text-green-700 mt-1">Your offer has been sent to the agent and a copy has been emailed to you.</p>
+              <h3 className="font-bold text-green-800 text-sm sm:text-base">Offer Submitted Successfully!</h3>
+              <p className="text-xs sm:text-sm text-green-700 mt-1">Your offer has been sent to the agent and a copy has been emailed to you.</p>
               <div className="flex gap-3 mt-2">
                 <button type="button" onClick={() => window.print()} className="text-xs font-bold text-green-800 hover:text-green-900 underline flex items-center gap-1"><Printer className="w-3 h-3" /> Print a Copy</button>
                 {!isPrefilled && (<button type="button" onClick={() => window.location.reload()} className="text-xs font-bold text-green-800 hover:text-green-900 underline">Create New Offer</button>)}
@@ -1508,7 +1518,7 @@ export default function App() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="p-8 pt-4 print:p-0">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-8 pt-3 sm:pt-4 print:p-0">
           {!isPrefilled && (
             <div className={`bg-slate-50 p-4 rounded border mb-6 print:hidden ${fieldErrors.agentName ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}>
               <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
