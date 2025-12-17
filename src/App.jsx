@@ -155,7 +155,7 @@ const ProgressBar = ({ formData, isQRForm = false }) => {
   const progress = calculateProgress(formData);
   
   return (
-    <div className={`sticky ${isQRForm ? 'top-0' : 'top-12 sm:top-16'} z-50 bg-white shadow-sm border-b border-slate-200 print:hidden`}>
+    <div className={`sticky ${isQRForm ? 'top-0 z-50' : 'top-[60px] sm:top-[68px] z-40'} bg-white shadow-sm border-b border-slate-200 print:hidden`}>
       <div className="w-full px-3 py-3 sm:px-4 sm:py-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs sm:text-sm font-medium text-slate-700">Progress</span>
@@ -1188,7 +1188,7 @@ export default function App() {
       <AutoSaveIndicator show={showAutoSave} />
 
       {!isQRCodeForm && (
-        <nav className="bg-slate-900 text-white p-3 sm:p-4 sticky top-0 z-40 shadow-md print:hidden">
+        <nav className="bg-slate-900 text-white p-3 sm:p-4 sticky top-0 z-50 shadow-md print:hidden">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-2">
               {logoUrl && <img src={logoUrl} alt="Logo" className="h-6 sm:h-8 w-auto bg-white p-1 rounded" />}
