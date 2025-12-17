@@ -235,7 +235,7 @@ export default function App() {
   const [mapsError, setMapsError] = useState(null);
   const [isPrefilled, setIsPrefilled] = useState(false);
   const [agentsList, setAgentsList] = useState(DEFAULT_AGENTS);
-  const [logoUrl, setLogoUrl] = useState(ORIGINAL_DEFAULT_LOGO);
+  const [logoUrl, setLogoUrl] = useState('');
   const [defaultLogoUrl, setDefaultLogoUrl] = useState(ORIGINAL_DEFAULT_LOGO);
   const [placeholders, setPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
   const [logoGallery, setLogoGallery] = useState([]);
@@ -328,9 +328,6 @@ export default function App() {
             if (data.logoUrl) {
               setLogoUrl(data.logoUrl);
               setTempLogoUrl(data.logoUrl);
-            } else {
-              setLogoUrl(ORIGINAL_DEFAULT_LOGO);
-              setTempLogoUrl(ORIGINAL_DEFAULT_LOGO);
             }
             if (data.placeholders) {
               setPlaceholders(prev => ({ ...prev, ...data.placeholders }));
@@ -852,7 +849,7 @@ export default function App() {
         <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md print:hidden">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />
+            {logoUrl && <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />}
               <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
             </div>
             {!isPrefilled && (
@@ -1159,12 +1156,12 @@ export default function App() {
           {/* LEFT COLUMN: Logo & Agent Info */}
           <div className="flex flex-col gap-4 max-w-[50%]">
             <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
-              <img 
-                src={logoUrl} 
-                alt="Logo" 
-                className="h-auto w-full max-h-16 object-contain origin-left" 
-                style={{ aspectRatio: 'auto' }}
-              />
+            {logoUrl && <img 
+  src={logoUrl} 
+  alt="Logo" 
+  className="h-auto w-full max-h-16 object-contain origin-left" 
+  style={{ aspectRatio: 'auto' }}
+/>}
             </div>
             
             {/* AGENT PROFILE - MOVED TO LEFT */}
