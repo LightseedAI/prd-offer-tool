@@ -155,7 +155,7 @@ const ProgressBar = ({ formData, isQRForm = false }) => {
   const progress = calculateProgress(formData);
   
   return (
-    <div className={`sticky ${isQRForm ? 'top-0' : 'top-16'} z-50 bg-white shadow-sm border-b border-slate-200 print:hidden`}>
+    <div className={`sticky ${isQRForm ? 'top-0' : 'top-12 sm:top-16'} z-50 bg-white shadow-sm border-b border-slate-200 print:hidden`}>
       <div className="w-full px-3 py-3 sm:px-4 sm:py-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs sm:text-sm font-medium text-slate-700">Progress</span>
@@ -1070,6 +1070,48 @@ export default function App() {
     if (window.confirm("Remove Agent?")) await deleteDoc(doc(dbRef.current, "agents", id));
   };
 
+  const handleClearForm = () => {
+    if (window.confirm("Clear all form data? This will reset the entire form.")) {
+      setFormData({
+        agentName: '',
+        agentEmail: '',
+        agentMobile: '',
+        agentTitle: '',
+        agentPhoto: '',
+        propertyAddress: '',
+        buyerName1: '',
+        buyerName2: '',
+        buyerAddress: '',
+        buyerPhone: '',
+        buyerEmail: '',
+        solicitorCompany: '',
+        solicitorContact: '',
+        solicitorEmail: '',
+        purchasePrice: '',
+        depositAmount: '',
+        depositTerms: placeholders.depositTerms || 'Payable immediately (upon contract date)',
+        financeDate: '',
+        financePreApproved: false,
+        inspectionDate: '',
+        settlementDate: '',
+        specialConditions: '',
+        signature: null,
+        signature2: null,
+        signatureDate1: new Date().toISOString().split('T')[0],
+        signatureDate2: new Date().toISOString().split('T')[0]
+      });
+      setFieldErrors({});
+      clearDraft();
+      
+      // Clear signature canvases if they exist
+      const canvases = document.querySelectorAll('canvas');
+      canvases.forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      });
+    }
+  };
+
   const handleNewAgentPhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1160,6 +1202,9 @@ export default function App() {
                   setShowAdminPanel(true); setAdminTab('qr');
                 })} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 rounded transition text-xs sm:text-sm font-bold">
                   <Lock className="w-3 h-3" /> <span className="hidden xs:inline">Admin</span>
+                </button>
+                <button type="button" onClick={handleClearForm} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-600 hover:bg-amber-700 text-white rounded transition font-medium text-xs sm:text-sm">
+                  <RotateCcw className="w-3 sm:w-4 h-3 sm:h-4" /><span className="hidden sm:inline">Clear</span>
                 </button>
                 <button type="button" onClick={handlePrint} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-xs sm:text-sm">
                   <Printer className="w-3 sm:w-4 h-3 sm:h-4" /><span className="hidden sm:inline">Print</span>
