@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle, Briefcase } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { PenTool, Calendar, DollarSign, User, Building, Phone, Mail, FileText, Check, X, Printer, Send, Settings, ChevronDown, Users, MapPin, AlertTriangle, Loader, QrCode, Copy, ExternalLink, Link as LinkIcon, RefreshCw, Trash2, Download, Database, Globe, Plus, Image as ImageIcon, Type, Lock, Percent, Edit2, Upload, RotateCcw, AlertCircle, Briefcase, Undo } from 'lucide-react';
 // FIREBASE & PDF IMPORTS
 import { pdf } from '@react-pdf/renderer';
 import { OfferPdfDocument } from './OfferPdf';
@@ -23,14 +23,15 @@ const CONST_FIREBASE_CONFIG = {
   appId: "1:124641181600:web:89b578ca25243ec89d2ec5"
 };
 
-const ORIGINAL_DEFAULT_LOGO = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iODAiIGZpbGw9IiNkYzI2MjYiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QUkQ8L3RleHQ+PC9zdmc+";
+// Remove the red placeholder logo - start with empty string
+const ORIGINAL_DEFAULT_LOGO = "";
 const ADMIN_PASSWORD = "PRD";
 
 const DEFAULT_PLACEHOLDERS = {
   purchasePrice: '',
   depositAmount: '',
   depositPercent: '',
-  depositTerms: 'Payable immediately',
+  depositTerms: 'Payable immediately (upon contract date)', // Enhanced default
   financeDate: '14 days from contract date',
   inspectionDate: '14 days from contract date',
   settlementDate: '30 days from contract date',
@@ -58,9 +59,132 @@ const formatCurrency = (value) => {
   return parseInt(num).toLocaleString();
 };
 
+// Smart deposit calculation helper
+const calculateSmartDeposit = (purchasePrice, depositPercent) => {
+  if (!depositPercent) return null;
+  
+  const priceValue = purchasePrice.replace(/[^0-9]/g, '');
+  const price = parseInt(priceValue);
+  
+  if (price) {
+    const deposit = Math.round(price * (depositPercent / 100));
+    return {
+      amount: deposit.toLocaleString(),
+      calculation: `${depositPercent}% of purchase price`
+    };
+  }
+  return null;
+};
+
+// Auto-save helpers
+const AUTOSAVE_KEY = 'prd-offer-draft';
+const AUTOSAVE_INTERVAL = 3000; // 3 seconds
+
+const saveDraft = (formData) => {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+      ...formData,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    console.warn('Could not save draft:', e);
+  }
+};
+
+const loadDraft = () => {
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Only load if less than 24 hours old
+      if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+        delete parsed.timestamp;
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load draft:', e);
+  }
+  return null;
+};
+
+const clearDraft = () => {
+  try {
+    localStorage.removeItem(AUTOSAVE_KEY);
+  } catch (e) {
+    console.warn('Could not clear draft:', e);
+  }
+};
+
+// Progress tracking helper
+const getRequiredFields = () => [
+  'agentName', 'propertyAddress', 'buyerName1', 'buyerAddress', 
+  'buyerPhone', 'buyerEmail', 'purchasePrice', 'depositAmount', 
+  'signature'
+];
+
+const calculateProgress = (formData) => {
+  const requiredFields = getRequiredFields();
+  let completed = 0;
+  
+  requiredFields.forEach(field => {
+    if (formData[field] && String(formData[field]).trim()) {
+      completed++;
+    }
+  });
+  
+  // Add second signature if second buyer exists
+  if (formData.buyerName2 && formData.buyerName2.trim()) {
+    requiredFields.push('signature2');
+    if (formData.signature2) completed++;
+  }
+  
+  return {
+    completed,
+    total: requiredFields.length,
+    percentage: Math.round((completed / requiredFields.length) * 100)
+  };
+};
+
 // ==============================================================================
 // COMPONENTS
 // ==============================================================================
+
+// Progress Bar Component
+const ProgressBar = ({ formData }) => {
+  const progress = calculateProgress(formData);
+  
+  return (
+    <div className="sticky top-0 z-50 bg-white shadow-sm border-b border-slate-200 print:hidden">
+      <div className="max-w-4xl mx-auto p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium text-slate-700">Form Progress</span>
+          <span className="text-sm text-slate-500">
+            {progress.completed} of {progress.total} required fields completed
+          </span>
+        </div>
+        <div className="w-full bg-slate-200 rounded-full h-2">
+          <div 
+            className="bg-red-600 h-2 rounded-full transition-all duration-300 ease-in-out" 
+            style={{ width: `${progress.percentage}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Auto-save Indicator Component
+const AutoSaveIndicator = ({ show }) => {
+  return (
+    <div className={`fixed bottom-4 right-4 z-50 transition-all duration-300 ${show ? 'opacity-100' : 'opacity-0'} print:hidden`}>
+      <div className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
+        <Check className="w-3 h-3" />
+        Draft saved
+      </div>
+    </div>
+  );
+};
 
 const SectionHeader = ({ icon: Icon, title }) => (
   <div className="flex items-center gap-2 border-b-2 border-slate-800 pb-2 mb-4 mt-8">
@@ -69,40 +193,49 @@ const SectionHeader = ({ icon: Icon, title }) => (
   </div>
 );
 
-const InputField = ({ label, name, type = "text", value, onChange, placeholder, className = "", required = false, inputRef, icon: Icon, readOnly = false, prefix, error = false }) => (
-  <div className={`flex flex-col ${className}`}>
-    <label className="text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-      {label} {required && <span className="text-red-500">*</span>}
-      {Icon && <Icon className="w-3 h-3 text-slate-400" />}
-    </label>
-    <div className="relative">
-      {prefix && (
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">{prefix}</span>
-      )}
-      <input
-        ref={inputRef}
-        type={type}
-        name={name}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        className={`border rounded p-2 text-sm focus:outline-none transition-colors w-full ${
-          prefix ? 'pl-7' : ''
-        } ${
-          error 
-            ? 'border-red-500 bg-red-50 focus:ring-red-500' // Error state
-            : readOnly 
-              ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed' 
-              : 'border-slate-300 focus:ring-2 focus:ring-red-600' // Normal state
-        }`}
-        autoComplete={name === "propertyAddress" ? "off" : "on"}
-        id={name} 
-        required={required}
-      />
+const InputField = ({ label, name, type = "text", value, onChange, placeholder, className = "", required = false, inputRef, icon: Icon, readOnly = false, prefix, error = false }) => {
+  const isCompleted = required && value && String(value).trim().length > 0;
+  
+  return (
+    <div className={`flex flex-col ${className}`}>
+      <label className="text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+        {label} {required && <span className="text-red-500">*</span>}
+        {Icon && <Icon className="w-3 h-3 text-slate-400" />}
+      </label>
+      <div className="relative">
+        {prefix && (
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">{prefix}</span>
+        )}
+        <input
+          ref={inputRef}
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          readOnly={readOnly}
+          className={`border rounded p-2 text-sm focus:outline-none transition-colors w-full ${
+            prefix ? 'pl-7' : ''
+          } ${
+            error 
+              ? 'border-red-500 bg-red-50 focus:ring-red-500' 
+              : readOnly 
+                ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed' 
+                : 'border-slate-300 focus:ring-2 focus:ring-red-600'
+          } ${isCompleted ? 'pr-8' : ''}`}
+          autoComplete={name === "propertyAddress" ? "off" : "on"}
+          id={name} 
+          required={required}
+        />
+        {isCompleted && (
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500">
+            <Check className="w-4 h-4 animate-in fade-in-0 zoom-in-50 duration-200" />
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const Checkbox = ({ label, name, checked, onChange }) => (
   <div className="flex items-center gap-2 mt-4 cursor-pointer" onClick={() => onChange({ target: { name, type: 'checkbox', checked: !checked } })}>
@@ -113,9 +246,12 @@ const Checkbox = ({ label, name, checked, onChange }) => (
   </div>
 );
 
-const SignaturePad = ({ onEnd, onClear, signatureData, error }) => {
+// Enhanced Signature Pad with Undo functionality
+const EnhancedSignaturePad = ({ onEnd, onClear, signatureData, error, label = "Sign Here" }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [strokes, setStrokes] = useState([]);
+  const [currentStroke, setCurrentStroke] = useState([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -129,34 +265,78 @@ const SignaturePad = ({ onEnd, onClear, signatureData, error }) => {
     }
   }, []);
 
-  const startDrawing = (e) => {
+  const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'black';
+    
+    strokes.forEach(stroke => {
+      if (stroke.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(stroke[0].x, stroke[0].y);
+        stroke.forEach(point => ctx.lineTo(point.x, point.y));
+        ctx.stroke();
+      }
+    });
+  }, [strokes]);
+
+  useEffect(() => {
+    redrawCanvas();
+  }, [strokes, redrawCanvas]);
+
+  const getEventPos = (e) => {
+    const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX || e.touches[0].clientX) - rect.left;
-    const y = (e.clientY || e.touches[0].clientY) - rect.top;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
+
+  const startDrawing = (e) => {
+    e.preventDefault();
+    const pos = getEventPos(e);
     setIsDrawing(true);
+    setCurrentStroke([pos]);
   };
 
   const draw = (e) => {
     if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX || e.touches[0].clientX) - rect.left;
-    const y = (e.clientY || e.touches[0].clientY) - rect.top;
-    ctx.lineTo(x, y);
-    ctx.stroke();
+    e.preventDefault();
+    
+    const pos = getEventPos(e);
+    setCurrentStroke(prev => {
+      const newStroke = [...prev, pos];
+      
+      // Draw current stroke in real time
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (prev.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(prev[prev.length - 1].x, prev[prev.length - 1].y);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      }
+      
+      return newStroke;
+    });
   };
 
   const endDrawing = () => {
-    if (isDrawing) {
-      setIsDrawing(false);
+    if (isDrawing && currentStroke.length > 0) {
+      setStrokes(prev => [...prev, currentStroke]);
+      setCurrentStroke([]);
       const canvas = canvasRef.current;
       onEnd(canvas.toDataURL());
     }
+    setIsDrawing(false);
   };
 
   const clear = (e) => {
@@ -164,12 +344,36 @@ const SignaturePad = ({ onEnd, onClear, signatureData, error }) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setStrokes([]);
+    setCurrentStroke([]);
     onClear();
+  };
+
+  const undo = (e) => {
+    e.stopPropagation();
+    if (strokes.length > 0) {
+      const newStrokes = strokes.slice(0, -1);
+      setStrokes(newStrokes);
+      
+      // Update canvas and callback
+      setTimeout(() => {
+        const canvas = canvasRef.current;
+        if (newStrokes.length === 0) {
+          onClear();
+        } else {
+          onEnd(canvas.toDataURL());
+        }
+      }, 10);
+    }
   };
 
   return (
     <div className={`relative w-full h-40 border-2 border-dashed rounded bg-slate-50 hover:bg-white transition-colors touch-none ${error ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}>
-      {!signatureData && <div className={`absolute inset-0 flex items-center justify-center pointer-events-none text-sm ${error ? 'text-red-600 font-bold' : 'text-slate-400'}`}>{error ? 'Signature Required' : 'Sign Here'}</div>}
+      {!signatureData && strokes.length === 0 && (
+        <div className={`absolute inset-0 flex items-center justify-center pointer-events-none text-sm ${error ? 'text-red-600 font-bold' : 'text-slate-400'}`}>
+          {error ? 'Signature Required' : label}
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         className="w-full h-full cursor-crosshair"
@@ -180,10 +384,30 @@ const SignaturePad = ({ onEnd, onClear, signatureData, error }) => {
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={endDrawing}
+        style={{
+          backgroundImage: 'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '20px 20px'
+        }}
       />
-      <button type="button" onClick={clear} className="absolute top-2 right-2 p-1 bg-white shadow rounded hover:text-red-600 text-slate-500" title="Clear Signature">
-        <X className="w-4 h-4" />
-      </button>
+      <div className="absolute top-2 right-2 flex gap-1">
+        <button 
+          type="button" 
+          onClick={undo} 
+          disabled={strokes.length === 0}
+          className="p-1 bg-white shadow rounded hover:text-blue-600 text-slate-500 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors" 
+          title="Undo Last Stroke"
+        >
+          <Undo className="w-4 h-4" />
+        </button>
+        <button 
+          type="button" 
+          onClick={clear} 
+          className="p-1 bg-white shadow rounded hover:text-red-600 text-slate-500 transition-colors" 
+          title="Clear Signature"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 };
@@ -196,8 +420,8 @@ export default function App() {
   const [formData, setFormData] = useState({
     agentName: '',
     agentEmail: '',
-    agentMobile: '', // Added
-    agentTitle: '',  // Added
+    agentMobile: '',
+    agentTitle: '',
     agentPhoto: '',
     propertyAddress: '',
     buyerName1: '',
@@ -210,7 +434,7 @@ export default function App() {
     solicitorEmail: '',
     purchasePrice: '',
     depositAmount: '',
-    depositTerms: '',
+    depositTerms: 'Payable immediately (upon contract date)', // Enhanced default
     financeDate: '',
     financePreApproved: false,
     inspectionDate: '',
@@ -229,22 +453,23 @@ export default function App() {
   const [submitStatus, setSubmitStatus] = useState(null);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [showAutoSave, setShowAutoSave] = useState(false);
   
   // Data State
   const [isMapsLoaded, setIsMapsLoaded] = useState(false);
   const [mapsError, setMapsError] = useState(null);
   const [isPrefilled, setIsPrefilled] = useState(false);
   const [agentsList, setAgentsList] = useState(DEFAULT_AGENTS);
-  const [logoUrl, setLogoUrl] = useState('');
-  const [defaultLogoUrl, setDefaultLogoUrl] = useState(ORIGINAL_DEFAULT_LOGO);
+  const [logoUrl, setLogoUrl] = useState(''); // Start empty to avoid red flash
+  const [defaultLogoUrl, setDefaultLogoUrl] = useState('');
   const [placeholders, setPlaceholders] = useState(DEFAULT_PLACEHOLDERS);
   const [logoGallery, setLogoGallery] = useState([]);
 
   // Admin UI State
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentEmail, setNewAgentEmail] = useState('');
-  const [newAgentMobile, setNewAgentMobile] = useState(''); // Added
-  const [newAgentTitle, setNewAgentTitle] = useState('');   // Added
+  const [newAgentMobile, setNewAgentMobile] = useState('');
+  const [newAgentTitle, setNewAgentTitle] = useState('');
   const [newAgentPhoto, setNewAgentPhoto] = useState('');
   
   const [tempLogoUrl, setTempLogoUrl] = useState('');
@@ -259,8 +484,8 @@ export default function App() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [editAgentName, setEditAgentName] = useState('');
   const [editAgentEmail, setEditAgentEmail] = useState('');
-  const [editAgentMobile, setEditAgentMobile] = useState(''); // Added
-  const [editAgentTitle, setEditAgentTitle] = useState('');   // Added
+  const [editAgentMobile, setEditAgentMobile] = useState('');
+  const [editAgentTitle, setEditAgentTitle] = useState('');
   const [editAgentPhoto, setEditAgentPhoto] = useState('');
 
   const [agentModeData, setAgentModeData] = useState({ agentName: '', propertyAddress: '' });
@@ -285,6 +510,40 @@ export default function App() {
   const newAgentPhotoInputRef = useRef(null);
   const editAgentPhotoInputRef = useRef(null);
   const formContainerRef = useRef(null);
+  const autoSaveTimeoutRef = useRef(null);
+
+  // ==============================================================================
+  // AUTO-SAVE FUNCTIONALITY
+  // ==============================================================================
+
+  // Auto-save effect
+  useEffect(() => {
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      saveDraft(formData);
+      setShowAutoSave(true);
+      setTimeout(() => setShowAutoSave(false), 2000);
+    }, AUTOSAVE_INTERVAL);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [formData]);
+
+  // Load draft on component mount
+  useEffect(() => {
+    if (!isPrefilled) {
+      const draft = loadDraft();
+      if (draft) {
+        setFormData(prev => ({ ...prev, ...draft }));
+      }
+    }
+  }, [isPrefilled]);
 
   // ==============================================================================
   // INITIALIZATION
@@ -493,11 +752,38 @@ export default function App() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    
     if (fieldErrors[name]) {
       setFieldErrors(prev => { const n = { ...prev }; delete n[name]; return n; });
     }
+    
     if (name === 'purchasePrice' || name === 'depositAmount') {
-      setFormData(prev => ({ ...prev, [name]: formatCurrency(value) }));
+      const newFormData = { ...formData, [name]: formatCurrency(value) };
+      setFormData(newFormData);
+      
+      // Smart deposit calculation when purchase price changes
+      if (name === 'purchasePrice' && placeholders.depositPercent) {
+        const result = calculateSmartDeposit(value, placeholders.depositPercent);
+        
+        if (result) {
+          // Auto-fill deposit amount
+          setFormData(prev => ({ ...prev, depositAmount: result.amount }));
+          
+          // Show the calculation text
+          const calculationElement = document.getElementById('deposit-calculation');
+          if (calculationElement) {
+            calculationElement.textContent = result.calculation;
+            calculationElement.style.opacity = '1';
+            
+            // Brief highlight animation
+            const depositField = document.querySelector('input[name="depositAmount"]');
+            if (depositField) {
+              depositField.classList.add('animate-pulse');
+              setTimeout(() => depositField.classList.remove('animate-pulse'), 1000);
+            }
+          }
+        }
+      }
     } else {
       setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     }
@@ -513,8 +799,8 @@ export default function App() {
       agentName: e.target.value, 
       agentEmail: selected ? selected.email : '',
       agentPhoto: selected ? selected.photo : '',
-      agentMobile: selected ? selected.mobile : '', // Grab mobile
-      agentTitle: selected ? selected.title : ''    // Grab title
+      agentMobile: selected ? selected.mobile : '',
+      agentTitle: selected ? selected.title : ''
     }));
   };
 
@@ -581,7 +867,9 @@ export default function App() {
     
     setIsSubmitting(true);
 
-    // Ensure we have the latest details for the selected agent
+    // Clear the draft when successfully submitting
+    clearDraft();
+
     const currentAgent = agentsList.find(a => a.name === formData.agentName);
     
     let pdfBase64 = null;
@@ -589,23 +877,15 @@ export default function App() {
     
     const payload = {
       ...formData,
-      
-      // 1. Add the Logo URL
       logoUrl: logoUrl, 
-
-      // 2. Add Agent Details (Check the agent list first, fallback to form data)
       agentMobile: currentAgent?.mobile || formData.agentMobile || '',
       agentTitle: currentAgent?.title || formData.agentTitle || '',
-      
-      // 3. Explicitly formatting numbers/dates to be safe
       depositAmount: formData.depositAmount, 
       depositTerms: formData.depositTerms, 
       financeDate: formData.financeDate, 
       inspectionDate: formData.inspectionDate, 
       settlementDate: formData.settlementDate, 
       submittedAt: new Date().toISOString(),
-      
-      // 4. PDF Data
       pdfBase64,
       pdfFilename: `Offer_${formData.propertyAddress.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${new Date().toISOString().split('T')[0]}.pdf`
     };
@@ -624,6 +904,7 @@ export default function App() {
     setIsSubmitting(false);
   };
 
+  // (Additional handler functions remain the same as original...)
   const generateSmartLink = async () => {
     if (!agentModeData.agentName || !agentModeData.propertyAddress) return;
     setIsGeneratingLink(true);
@@ -658,10 +939,7 @@ export default function App() {
     } catch (e) { alert("Save failed."); console.error(e); }
   };
 
-  // --------------------------------------------------------------------------
-  // LOGO UPLOAD (UPDATED TO USE STORAGE)
-  // --------------------------------------------------------------------------
-
+  // Logo upload handler (unchanged)
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -712,17 +990,13 @@ export default function App() {
     try { await deleteDoc(doc(dbRef.current, "logos", logoId)); } catch (e) { alert("Delete failed."); }
   };
 
-  // --------------------------------------------------------------------------
-  // AGENT MANAGEMENT HANDLERS (UPDATED)
-  // --------------------------------------------------------------------------
-
+  // Agent management handlers (unchanged)
   const handleAddAgent = async () => {
     if (!newAgentName || !newAgentEmail || !dbRef.current) return;
     setIsUploadingAgentPhoto(true);
     try {
       let finalPhotoUrl = newAgentPhoto || '';
       if (photoFile && storageRef.current) {
-        // Clean filename logic
         const cleanName = newAgentName.toLowerCase().replace(/[^a-z0-9]/g, '-');
         const fileExt = photoFile.name.split('.').pop();
         const fileName = `${cleanName}-${Date.now()}.${fileExt}`;
@@ -843,13 +1117,29 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 print:bg-white text-slate-800 font-sans relative">
-      <style>{`.pac-container { z-index: 10000 !important; }`}</style>
+      <style>{`
+        .pac-container { z-index: 10000 !important; }
+        @keyframes highlight {
+          0% { background-color: transparent; }
+          50% { background-color: #fef3cd; }
+          100% { background-color: transparent; }
+        }
+        .smart-calc {
+          animation: highlight 1s ease-in-out;
+        }
+      `}</style>
+
+      {/* Progress Bar */}
+      <ProgressBar formData={formData} />
+
+      {/* Auto-save Indicator */}
+      <AutoSaveIndicator show={showAutoSave} />
 
       {!isQRCodeForm && (
-        <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-md print:hidden">
+        <nav className="bg-slate-900 text-white p-4 sticky top-16 z-40 shadow-md print:hidden">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-2">
-            {logoUrl && <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />}
+              {logoUrl && <img src={logoUrl} alt="Logo" className="h-8 w-auto bg-white p-1 rounded" />}
               <span className="font-bold tracking-tight ml-2 hidden sm:inline">Offer Form</span>
             </div>
             {!isPrefilled && (
@@ -870,7 +1160,7 @@ export default function App() {
         </nav>
       )}
 
-      {/* ADMIN PANEL */}
+      {/* ADMIN PANEL (unchanged) */}
       {showAdminPanel && (
         <div className="fixed inset-0 z-[60] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 print:hidden">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -941,14 +1231,14 @@ export default function App() {
                 </div>
               )}
 
-              {/* SETTINGS TAB */}
+              {/* SETTINGS TAB (unchanged, but with enhanced placeholders) */}
               {adminTab === 'settings' && (
                 <div className="space-y-6">
                   <div>
                     <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo</h3>
                     <div className="flex items-start gap-4 mb-4">
                       <div className="w-32 h-16 bg-slate-100 border-2 border-red-500 rounded flex items-center justify-center p-2">
-                        <img src={tempLogoUrl || defaultLogoUrl} alt="Current Logo" className="max-h-full max-w-full object-contain" />
+                        {tempLogoUrl && <img src={tempLogoUrl || defaultLogoUrl} alt="Current Logo" className="max-h-full max-w-full object-contain" />}
                       </div>
                       <div className="flex-1">
                         <p className="text-xs font-bold text-slate-700 mb-1">Currently Selected</p>
@@ -999,7 +1289,6 @@ export default function App() {
                     <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Type className="w-4 h-4" /> Form Placeholders</h3>
                     <p className="text-xs text-slate-500 mb-3">Leave empty for no placeholder.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Placeholder fields (unchanged) */}
                       <div>
                         <label className="text-xs text-slate-500 block mb-1">Purchase Price</label>
                         <div className="relative">
@@ -1046,7 +1335,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* TEAM TAB */}
+              {/* TEAM TAB (unchanged) */}
               {adminTab === 'team' && (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600">Manage your team members. Added fields will appear in the webhook data.</p>
@@ -1156,15 +1445,17 @@ export default function App() {
           {/* LEFT COLUMN: Logo & Agent Info */}
           <div className="flex flex-col gap-4 max-w-[50%]">
             <div className="flex-shrink-0 max-w-[200px] sm:max-w-[250px]">
-            {logoUrl && <img 
-  src={logoUrl} 
-  alt="Logo" 
-  className="h-auto w-full max-h-16 object-contain origin-left" 
-  style={{ aspectRatio: 'auto' }}
-/>}
+              {logoUrl && (
+                <img 
+                  src={logoUrl} 
+                  alt="Logo" 
+                  className="h-auto w-full max-h-16 object-contain origin-left" 
+                  style={{ aspectRatio: 'auto' }}
+                />
+              )}
             </div>
             
-            {/* AGENT PROFILE - MOVED TO LEFT */}
+            {/* AGENT PROFILE */}
             {formData.agentName && (
               <div className="flex items-center gap-3 mt-2">
                 {selectedAgent?.photo ? (
@@ -1256,7 +1547,14 @@ export default function App() {
           <SectionHeader icon={DollarSign} title="Price & Deposit" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <InputField label="Purchase Price Offer" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required prefix="$" error={!!fieldErrors.purchasePrice} />
-            <InputField label="Initial Deposit" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} prefix="$" required error={!!fieldErrors.depositAmount} />
+            <div className="flex flex-col">
+              <InputField label="Initial Deposit" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} prefix="$" required error={!!fieldErrors.depositAmount} />
+              {placeholders.depositPercent && (
+                <div id="deposit-calculation" className="text-xs text-slate-500 mt-1 opacity-0 transition-opacity">
+                  {placeholders.depositPercent}% of purchase price
+                </div>
+              )}
+            </div>
             <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
           </div>
 
@@ -1288,7 +1586,13 @@ export default function App() {
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">{hasSecondBuyer ? 'Buyer 1 Signature' : 'Buyer Signature'} <span className="text-red-500">*</span></label>
                   <div className="print:hidden">
-                    <SignaturePad signatureData={formData.signature} onEnd={(data) => handleSignatureEnd('signature', data)} onClear={() => handleSignatureClear('signature')} error={!!fieldErrors.signature} />
+                    <EnhancedSignaturePad 
+                      signatureData={formData.signature} 
+                      onEnd={(data) => handleSignatureEnd('signature', data)} 
+                      onClear={() => handleSignatureClear('signature')} 
+                      error={!!fieldErrors.signature} 
+                      label="Tap or click here to sign"
+                    />
                   </div>
                   <div className="hidden print:block h-32 border-b border-slate-300 relative">{formData.signature && (<img src={formData.signature} alt="Signature 1" className="h-full object-contain absolute bottom-0 left-0" />)}</div>
                 </div>
@@ -1299,7 +1603,13 @@ export default function App() {
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Buyer 2 Signature <span className="text-red-500">*</span></label>
                     <div className="print:hidden">
-                      <SignaturePad signatureData={formData.signature2} onEnd={(data) => handleSignatureEnd('signature2', data)} onClear={() => handleSignatureClear('signature2')} error={!!fieldErrors.signature2} />
+                      <EnhancedSignaturePad 
+                        signatureData={formData.signature2} 
+                        onEnd={(data) => handleSignatureEnd('signature2', data)} 
+                        onClear={() => handleSignatureClear('signature2')} 
+                        error={!!fieldErrors.signature2}
+                        label="Tap or click here to sign"
+                      />
                     </div>
                     <div className="hidden print:block h-32 border-b border-slate-300 relative">{formData.signature2 && (<img src={formData.signature2} alt="Signature 2" className="h-full object-contain absolute bottom-0 left-0" />)}</div>
                   </div>
