@@ -116,7 +116,17 @@ const clearDraft = () => {
   }
 };
 
-// Progress tracking helper
+// Progress tracking helper - enhanced with sections
+const FORM_SECTIONS = [
+  { id: 'agent', label: 'Agent', icon: Users, fields: ['agentName'] },
+  { id: 'property', label: 'Property', icon: Building, fields: ['propertyAddress'] },
+  { id: 'buyer', label: 'Buyer', icon: User, fields: ['buyerName1', 'buyerAddress', 'buyerPhone', 'buyerEmail'] },
+  { id: 'solicitor', label: 'Solicitor', icon: Briefcase, fields: [] },
+  { id: 'price', label: 'Price', icon: DollarSign, fields: ['purchasePrice', 'depositAmount'] },
+  { id: 'conditions', label: 'Conditions', icon: Calendar, fields: [] },
+  { id: 'signature', label: 'Sign', icon: PenTool, fields: ['signature'] }
+];
+
 const getRequiredFields = () => [
   'agentName', 'propertyAddress', 'buyerName1', 'buyerAddress', 
   'buyerPhone', 'buyerEmail', 'purchasePrice', 'depositAmount', 
@@ -146,29 +156,135 @@ const calculateProgress = (formData) => {
   };
 };
 
+const getSectionStatus = (formData, section) => {
+  if (section.fields.length === 0) return 'optional';
+  
+  const completedFields = section.fields.filter(field => 
+    formData[field] && String(formData[field]).trim()
+  );
+  
+  if (completedFields.length === section.fields.length) return 'complete';
+  if (completedFields.length > 0) return 'partial';
+  return 'empty';
+};
+
 // ==============================================================================
 // COMPONENTS
 // ==============================================================================
 
-// Progress Bar Component
-const ProgressBar = ({ formData, isQRForm = false }) => {
+// Mobile Progress Bar Component (horizontal, top of screen)
+const MobileProgressBar = ({ formData, isQRForm = false }) => {
   const progress = calculateProgress(formData);
   
   return (
-    <div className={`sticky ${isQRForm ? 'top-0 z-50' : 'top-[60px] sm:top-[68px] z-40'} bg-white shadow-sm border-b border-slate-200 print:hidden`}>
-      <div className="w-full px-3 py-3 sm:px-4 sm:py-4">
+    <div className={`lg:hidden sticky ${isQRForm ? 'top-0 z-50' : 'top-[56px] z-40'} bg-white shadow-sm border-b border-slate-200 print:hidden`}>
+      <div className="w-full px-3 py-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs sm:text-sm font-medium text-slate-700">Progress</span>
-          <span className="text-xs sm:text-sm text-slate-500">
-            <span className="hidden sm:inline">{progress.completed} of {progress.total} required fields completed</span>
-            <span className="sm:hidden">{progress.completed}/{progress.total} done</span>
+          <span className="text-xs font-medium text-slate-700">Progress</span>
+          <span className="text-xs text-slate-500">
+            {progress.completed}/{progress.total} done
           </span>
         </div>
-        <div className="w-full bg-slate-200 rounded-full h-1.5 sm:h-2">
+        <div className="w-full bg-slate-200 rounded-full h-1.5">
           <div 
-            className="bg-red-600 h-1.5 sm:h-2 rounded-full transition-all duration-300 ease-in-out" 
+            className="bg-red-600 h-1.5 rounded-full transition-all duration-300 ease-in-out" 
             style={{ width: `${progress.percentage}%` }}
           />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Desktop Floating Sidebar Progress Component
+const DesktopProgressSidebar = ({ formData, isQRForm = false }) => {
+  const progress = calculateProgress(formData);
+  
+  const scrollToSection = (sectionId) => {
+    const element = document.getElementById(`section-${sectionId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+  
+  return (
+    <div className="hidden lg:block fixed left-4 top-1/2 -translate-y-1/2 z-40 print:hidden">
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 w-48">
+        {/* Progress Circle */}
+        <div className="flex items-center justify-center mb-4">
+          <div className="relative w-20 h-20">
+            <svg className="w-20 h-20 transform -rotate-90">
+              <circle
+                cx="40"
+                cy="40"
+                r="36"
+                stroke="#e2e8f0"
+                strokeWidth="6"
+                fill="none"
+              />
+              <circle
+                cx="40"
+                cy="40"
+                r="36"
+                stroke="#dc2626"
+                strokeWidth="6"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 36}`}
+                strokeDashoffset={`${2 * Math.PI * 36 * (1 - progress.percentage / 100)}`}
+                className="transition-all duration-500 ease-out"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-lg font-bold text-slate-800">{progress.percentage}%</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Section Steps */}
+        <div className="space-y-1">
+          {FORM_SECTIONS.map((section, index) => {
+            const status = getSectionStatus(formData, section);
+            const Icon = section.icon;
+            
+            return (
+              <button
+                key={section.id}
+                onClick={() => scrollToSection(section.id)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors text-sm ${
+                  status === 'complete' 
+                    ? 'bg-green-50 text-green-700' 
+                    : status === 'partial'
+                    ? 'bg-amber-50 text-amber-700'
+                    : status === 'optional'
+                    ? 'bg-slate-50 text-slate-500'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  status === 'complete' 
+                    ? 'bg-green-500 text-white' 
+                    : status === 'partial'
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-slate-200 text-slate-500'
+                }`}>
+                  {status === 'complete' ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    <span className="text-xs font-medium">{index + 1}</span>
+                  )}
+                </div>
+                <span className="font-medium truncate">{section.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        
+        {/* Completion text */}
+        <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+          <span className="text-xs text-slate-500">
+            {progress.completed} of {progress.total} fields
+          </span>
         </div>
       </div>
     </div>
@@ -187,8 +303,8 @@ const AutoSaveIndicator = ({ show }) => {
   );
 };
 
-const SectionHeader = ({ icon: Icon, title }) => (
-  <div className="flex items-center gap-2 border-b-2 border-slate-800 pb-2 mb-4 mt-8">
+const SectionHeader = ({ icon: Icon, title, id }) => (
+  <div id={id ? `section-${id}` : undefined} className="flex items-center gap-2 border-b-2 border-slate-800 pb-2 mb-4 mt-8 scroll-mt-24 lg:scroll-mt-8">
     <Icon className="w-5 h-5 text-red-600" />
     <h2 className="text-lg font-bold uppercase tracking-wider text-slate-800">{title}</h2>
   </div>
@@ -1181,12 +1297,13 @@ export default function App() {
         }
       `}</style>
 
-      {/* Progress Bar */}
-      <ProgressBar formData={formData} isQRForm={isQRCodeForm} />
+      {/* Desktop Floating Progress Sidebar */}
+      {!isQRCodeForm && <DesktopProgressSidebar formData={formData} />}
 
       {/* Auto-save Indicator */}
       <AutoSaveIndicator show={showAutoSave} />
 
+      {/* FIXED: Navigation bar - removed transition that caused bounce */}
       {!isQRCodeForm && (
         <nav className="bg-slate-900 text-white p-3 sm:p-4 sticky top-0 z-50 shadow-md print:hidden">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
@@ -1196,24 +1313,31 @@ export default function App() {
             </div>
             {!isPrefilled && (
               <div className="flex gap-1 sm:gap-2">
+                {/* FIXED: Admin button - "Admin" text visible on sm and up */}
                 <button type="button" onClick={() => checkAdminAccess(() => {
                   setAgentModeData({ agentName: formData.agentName || '', propertyAddress: formData.propertyAddress || '' });
                   setShortLink(''); setQrGenerated(false);
                   setShowAdminPanel(true); setAdminTab('qr');
-                })} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 rounded transition text-xs sm:text-sm font-bold">
-                  <Lock className="w-3 h-3" /> <span className="hidden xs:inline">Admin</span>
+                })} className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 rounded transition text-xs sm:text-sm font-bold">
+                  <Lock className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Admin</span>
                 </button>
-                <button type="button" onClick={handleClearForm} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-600 hover:bg-amber-700 text-white rounded transition font-medium text-xs sm:text-sm">
-                  <RotateCcw className="w-3 sm:w-4 h-3 sm:h-4" /><span className="hidden sm:inline">Clear</span>
+                <button type="button" onClick={handleClearForm} className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-600 hover:bg-amber-700 text-white rounded transition font-medium text-xs sm:text-sm">
+                  <RotateCcw className="w-3 sm:w-4 h-3 sm:h-4" />
+                  <span className="hidden sm:inline">Clear</span>
                 </button>
-                <button type="button" onClick={handlePrint} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-xs sm:text-sm">
-                  <Printer className="w-3 sm:w-4 h-3 sm:h-4" /><span className="hidden sm:inline">Print</span>
+                <button type="button" onClick={handlePrint} className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-700 hover:bg-slate-600 rounded transition font-medium text-xs sm:text-sm">
+                  <Printer className="w-3 sm:w-4 h-3 sm:h-4" />
+                  <span className="hidden sm:inline">Print</span>
                 </button>
               </div>
             )}
           </div>
         </nav>
       )}
+
+      {/* Mobile Progress Bar - only visible on mobile */}
+      <MobileProgressBar formData={formData} isQRForm={isQRCodeForm} />
 
       {/* ADMIN PANEL (unchanged) */}
       {showAdminPanel && (
@@ -1495,7 +1619,7 @@ export default function App() {
       )}
 
       {/* MAIN FORM */}
-      <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen">
+      <div ref={formContainerRef} className="max-w-4xl mx-auto bg-white shadow-xl print:shadow-none min-h-screen lg:ml-56">
         <header className="p-4 sm:p-8 pb-3 sm:pb-4 border-b border-slate-200 flex justify-between items-start print:p-0 print:mb-8">
           {/* LEFT COLUMN: Logo & Agent Info */}
           <div className="flex flex-col gap-3 sm:gap-4 max-w-[50%]">
@@ -1565,7 +1689,7 @@ export default function App() {
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-8 pt-3 sm:pt-4 print:p-0">
           {!isPrefilled && (
-            <div className={`bg-slate-50 p-4 rounded border mb-6 print:hidden ${fieldErrors.agentName ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}>
+            <div id="section-agent" className={`bg-slate-50 p-4 rounded border mb-6 print:hidden scroll-mt-24 lg:scroll-mt-8 ${fieldErrors.agentName ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}>
               <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
                 <Users className="w-4 h-4" /> Select Selling Agent <span className="text-red-500">*</span>
               </label>
@@ -1580,10 +1704,10 @@ export default function App() {
             </div>
           )}
 
-          <SectionHeader icon={Building} title="Property Details" />
+          <SectionHeader icon={Building} title="Property Details" id="property" />
           <InputField label="Property Address" name="propertyAddress" value={formData.propertyAddress} onChange={handleChange} placeholder={isMapsLoaded && !mapsError ? "Start typing address..." : "e.g. 4D/238 The Esplanade"} className="w-full" required readOnly={isPrefilled} inputRef={addressInputRef} icon={isMapsLoaded && !mapsError ? MapPin : null} error={!!fieldErrors.propertyAddress} />
 
-          <SectionHeader icon={User} title="Buyer Details" />
+          <SectionHeader icon={User} title="Buyer Details" id="buyer" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <InputField label="Buyer Full Name (1)" name="buyerName1" value={formData.buyerName1} onChange={handleChange} required error={!!fieldErrors.buyerName1} />
             <InputField label="Buyer Full Name (2)" name="buyerName2" value={formData.buyerName2} onChange={handleChange} />
@@ -1592,14 +1716,14 @@ export default function App() {
             <InputField label="Email Address" name="buyerEmail" type="email" value={formData.buyerEmail} onChange={handleChange} required error={!!fieldErrors.buyerEmail} />
           </div>
 
-          <SectionHeader icon={FileText} title="Buyer's Solicitor" />
+          <SectionHeader icon={FileText} title="Buyer's Solicitor" id="solicitor" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <InputField label="Company Name" name="solicitorCompany" value={formData.solicitorCompany} onChange={handleChange} placeholder="TBA if unknown" />
             <InputField label="Contact Person" name="solicitorContact" value={formData.solicitorContact} onChange={handleChange} />
             <InputField label="Email / Phone" name="solicitorEmail" value={formData.solicitorEmail} onChange={handleChange} className="md:col-span-2" />
           </div>
 
-          <SectionHeader icon={DollarSign} title="Price & Deposit" />
+          <SectionHeader icon={DollarSign} title="Price & Deposit" id="price" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <InputField label="Purchase Price Offer" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required prefix="$" error={!!fieldErrors.purchasePrice} />
             <div className="flex flex-col">
@@ -1613,7 +1737,7 @@ export default function App() {
             <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
           </div>
 
-          <SectionHeader icon={Calendar} title="Conditions" />
+          <SectionHeader icon={Calendar} title="Conditions" id="conditions" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div className="p-4 bg-slate-50 border border-slate-200 rounded">
               <h3 className="font-bold text-slate-700 mb-3 text-sm">Finance</h3>
@@ -1632,7 +1756,7 @@ export default function App() {
             <textarea name="specialConditions" value={formData.specialConditions} onChange={handleChange} rows={4} className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 transition-colors" placeholder={placeholders.specialConditions || ''}></textarea>
           </div>
 
-          <div className="mt-12 mb-8 break-inside-avoid">
+          <div id="section-signature" className="mt-12 mb-8 break-inside-avoid scroll-mt-24 lg:scroll-mt-8">
             <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2 mb-4">
               <div className="flex items-center gap-2"><PenTool className="w-5 h-5 text-red-600" /><h2 className="text-lg font-bold uppercase tracking-wider text-slate-800">Authorisation</h2></div>
             </div>
@@ -1681,7 +1805,7 @@ export default function App() {
           </div>
         </form>
       </div>
-      <div className="max-w-4xl mx-auto py-8 text-center text-slate-400 text-xs print:hidden"><p>&copy; {new Date().getFullYear()} PRD Real Estate. Powered by Online Offer Form.</p></div>
+      <div className="max-w-4xl mx-auto py-8 text-center text-slate-400 text-xs print:hidden lg:ml-56"><p>&copy; {new Date().getFullYear()} PRD Real Estate. Powered by Online Offer Form.</p></div>
     </div>
   );
 }

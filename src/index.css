@@ -12,6 +12,20 @@ html {
   outline: none;
 }
 
+/* --- FIX FOR HEADER BOUNCE: Prevent layout shifts on sticky elements --- */
+nav.sticky {
+  /* Prevent any transform or transition that could cause bounce */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Ensure smooth scrolling doesn't cause jank */
+.sticky {
+  will-change: transform;
+}
+
 /* --- FIX FOR POINT 3: Red Highlight Class --- */
 /* We will toggle this class in React when validation fails */
 .input-error {
@@ -49,6 +63,11 @@ html {
   * {
     color: #000 !important;
   }
+  
+  /* Reset margins for print */
+  .lg\:ml-56 {
+    margin-left: 0 !important;
+  }
 }
 
 /* Custom scrollbar */
@@ -69,6 +88,7 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
 /* Enhanced mobile optimizations */
 @media (max-width: 640px) {
   /* Prevent form zoom on iOS */
@@ -97,4 +117,16 @@ html {
   .signature-canvas {
     height: 120px !important;
   }
+}
+
+/* Desktop sidebar progress animations */
+@media (min-width: 1024px) {
+  .scroll-mt-8 {
+    scroll-margin-top: 2rem;
+  }
+}
+
+/* Smooth progress circle animation */
+svg circle {
+  transition: stroke-dashoffset 0.5s ease-out;
 }
