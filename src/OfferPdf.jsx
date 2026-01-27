@@ -16,7 +16,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontFamily: 'Helvetica-Bold', color: '#DC2626', textTransform: 'uppercase' },
   subTitle: { fontSize: 10, color: '#64748B' },
   
-  section: { marginBottom: 15 },
+  section: { marginBottom: 12 },
   sectionTitle: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: '#1E293B', borderBottom: '1 solid #E2E8F0', marginBottom: 8, paddingBottom: 4, textTransform: 'uppercase' },
   
   row: { flexDirection: 'row', marginBottom: 6 },
@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
   signatureLabel: { fontSize: 8, color: '#64748B', marginTop: 4, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
   
   // Disclaimer
-  disclaimer: { marginTop: 20, padding: 10, backgroundColor: '#FEF2F2', borderLeft: '3 solid #DC2626' },
+  disclaimer: { marginTop: 15, padding: 10, backgroundColor: '#FEF2F2', borderLeft: '3 solid #DC2626' },
   disclaimerText: { fontSize: 8, color: '#991B1B', lineHeight: 1.4 }
 });
 
@@ -51,12 +51,12 @@ export const OfferPdfDocument = ({ formData, logoUrl }) => {
     <Document>
       <Page size="A4" style={styles.page}>
         
-        {/* HEADER */}
+        {/* HEADER - UPDATED TEXT */}
         <View style={styles.header}>
           <Image src={logoUrl} style={styles.logo} />
           <View style={styles.headerText}>
-            <Text style={styles.title}>Offer to Purchase</Text>
-            <Text style={styles.subTitle}>Official Letter of Offer</Text>
+            <Text style={styles.title}>NON-BINDING PROPERTY PURCHASE</Text>
+            <Text style={styles.subTitle}>Letter of Offer</Text>
           </View>
         </View>
 
@@ -227,8 +227,8 @@ export const OfferPdfDocument = ({ formData, logoUrl }) => {
           )}
         </View>
 
-        {/* SIGNATURE SECTION - Multi-buyer signatures */}
-        <View style={styles.section}>
+        {/* SIGNATURE SECTION - Multi-buyer signatures with break="false" to prevent splitting */}
+        <View style={styles.section} wrap={false}>
           <Text style={styles.sectionTitle}>Authorisation</Text>
           
           <View style={styles.signatureRow}>
@@ -252,7 +252,7 @@ export const OfferPdfDocument = ({ formData, logoUrl }) => {
         </View>
 
         {/* NON-BINDING DISCLAIMER */}
-        <View style={styles.disclaimer}>
+        <View style={styles.disclaimer} wrap={false}>
           <Text style={styles.disclaimerText}>
             IMPORTANT NOTICE: This document is a non-binding expression of interest only and does not constitute a 
             legally binding contract. Any offer to purchase is subject to the execution of a formal contract of sale 

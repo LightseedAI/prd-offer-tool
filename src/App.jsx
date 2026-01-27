@@ -261,7 +261,7 @@ const getSectionStatus = (formData, section) => {
     if (hasEmail || hasPhone) return 'partial';
     return 'empty';
   }
-  
+
   // Optional sections (no required fields)
   if (section.fields.length === 0) return 'optional';
   
@@ -809,7 +809,9 @@ export default function App() {
 
         const qLogos = query(collection(dbRef.current, "logos"), orderBy("uploadedAt", "desc"));
         const unsubLogos = onSnapshot(qLogos, (snap) => {
-          const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const loaded = snap.docs
+  .map(d => ({ id: d.id, ...d.data() }))
+  .filter(logo => logo.url && logo.url.trim() !== ''); // Only show logos with valid URLs
           if (loaded.length === 0) {
             addDoc(collection(dbRef.current, "logos"), {
               name: "Default Logo",
