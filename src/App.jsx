@@ -11,6 +11,12 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 // CONFIGURATION
 // ==============================================================================
 
+console.table({
+  'API Key exists': !!import.meta.env.VITE_FIREBASE_API_KEY,
+  'Project ID': import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  'Auth Domain': import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
+});
+
 const CONST_GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 const CONST_WEBHOOK_URL = "https://n8n.srv971972.hstgr.cloud/webhook/prd-offer-form";
 
@@ -29,13 +35,15 @@ const ADMIN_PASSWORD = "PRD";
 
 const DEFAULT_PLACEHOLDERS = {
   purchasePrice: '',
-  depositAmount: '',
-  depositPercent: '',
-  depositTerms: 'Payable immediately (upon contract date)', // Enhanced default
-  financeDate: '14 days from contract date',
-  inspectionDate: '14 days from contract date',
-  settlementDate: '30 days from contract date',
-  specialConditions: 'e.g. Subject to sale of existing property...'
+  initialDeposit: '',
+  initialDepositTerms: '',
+  balanceDepositAmount: '',
+  balanceDepositPercent: '',
+  balanceDepositTerms: '',
+  financeDate: '',
+  inspectionDate: '',
+  settlementDate: '',
+  specialConditions: ''
 };
 
 const DEFAULT_AGENTS = [
@@ -118,13 +126,13 @@ const clearDraft = () => {
 
 // Progress tracking helper - enhanced with sections
 const FORM_SECTIONS = [
-  { id: 'agent', label: 'Agent', icon: Users, fields: ['agentName'] },
+  { id: 'agent', label: 'Agent', icon: User, fields: ['agentName'] },
   { id: 'property', label: 'Property', icon: Building, fields: ['propertyAddress'] },
-  { id: 'buyer', label: 'Buyer', icon: User, fields: ['buyerName1', 'buyerAddress', 'buyerPhone', 'buyerEmail'] },
-  { id: 'solicitor', label: 'Solicitor', icon: Briefcase, fields: [] },
-  { id: 'price', label: 'Price', icon: DollarSign, fields: ['purchasePrice', 'depositAmount'] },
+  { id: 'buyer', label: 'Buyer', icon: Users, fields: [] },
+  { id: 'solicitor', label: 'Solicitor', icon: Briefcase, fields: ['solicitorEmail', 'solicitorPhone'] },
+  { id: 'price', label: 'Price', icon: DollarSign, fields: ['purchasePrice', 'initialDeposit', 'balanceDeposit'] },
   { id: 'conditions', label: 'Conditions', icon: Calendar, fields: [] },
-  { id: 'signature', label: 'Sign', icon: PenTool, fields: ['signature'] }
+  { id: 'signature', label: 'Sign', icon: PenTool, fields: [] }
 ];
 
 const getRequiredFields = () => [
@@ -133,40 +141,127 @@ const getRequiredFields = () => [
   'signature'
 ];
 
+
+
+// COPY THIS ENTIRE FUNCTION
+// Replace your old calculateProgress with this:
+
 const calculateProgress = (formData) => {
-  const requiredFields = getRequiredFields();
+  const buyers = formData.buyers || [];
+  
   let completed = 0;
+  let total = 7; // Base fields: agent, property, price, 2 deposits, 2 solicitor
   
-  requiredFields.forEach(field => {
-    if (formData[field] && String(formData[field]).trim()) {
-      completed++;
+  // Check main fields
+  if (formData.agentName) completed++;
+  if (formData.propertyAddress) completed++;
+  if (formData.purchasePrice) completed++;
+  if (formData.initialDeposit) completed++;
+  if (formData.balanceDeposit) completed++;
+  if (formData.solicitorEmail) completed++;
+  if (formData.solicitorPhone) completed++;
+  
+  // Check each buyer (add to total dynamically)
+  buyers.forEach(buyer => {
+    if (buyer.isEntity) {
+      total += 3; // entityName, abn, acn
+      if (buyer.entityName) completed++;
+      if (buyer.abn) completed++;
+      if (buyer.acn) completed++;
+    } else {
+      total += 2; // firstName, surname
+      if (buyer.firstName) completed++;
+      if (buyer.surname) completed++;
     }
+    
+    total += 4; // email, phone, address, signature (for all buyers)
+    if (buyer.email) completed++;
+    if (buyer.phone) completed++;
+    if (buyer.address) completed++;
+    if (buyer.signature) completed++;
   });
-  
-  // Add second signature if second buyer exists
-  if (formData.buyerName2 && formData.buyerName2.trim()) {
-    requiredFields.push('signature2');
-    if (formData.signature2) completed++;
-  }
   
   return {
     completed,
-    total: requiredFields.length,
-    percentage: Math.round((completed / requiredFields.length) * 100)
+    total,
+    percentage: total > 0 ? Math.round((completed / total) * 100) : 0
   };
 };
 
 const getSectionStatus = (formData, section) => {
+  // Special handling for Buyer section
+  if (section.id === 'buyer') {
+    const buyers = formData.buyers || [];
+    if (buyers.length === 0) return 'empty';
+    
+    let hasAnyComplete = false;
+    let allComplete = true;
+    
+    buyers.forEach(buyer => {
+      const hasName = buyer.isEntity 
+        ? (buyer.entityName && buyer.entityName.trim())
+        : (buyer.firstName && buyer.firstName.trim() && buyer.surname && buyer.surname.trim());
+      
+      const hasEmail = buyer.email && buyer.email.trim();
+      const hasPhone = buyer.phone && buyer.phone.trim();
+      const hasAddress = buyer.address && buyer.address.trim();
+      const hasContact = hasEmail && hasPhone && hasAddress;
+      
+      const buyerComplete = hasName && hasContact;
+      
+      if (buyerComplete) {
+        hasAnyComplete = true;
+      } else {
+        allComplete = false;
+      }
+    });
+    
+    if (allComplete && hasAnyComplete) return 'complete';
+    if (hasAnyComplete) return 'partial';
+    return 'empty';
+  }
+  
+  // Special handling for Signature section
+  if (section.id === 'signature') {
+    const buyers = formData.buyers || [];
+    if (buyers.length === 0) return 'empty';
+    
+    const allSigned = buyers.every(buyer => buyer.signature);
+    const anySigned = buyers.some(buyer => buyer.signature);
+    
+    if (allSigned) return 'complete';
+    if (anySigned) return 'partial';
+    return 'empty';
+  }
+  
+  // Special handling for Conditions section
+  if (section.id === 'conditions') {
+    const conditionFields = ['financeDate', 'inspectionDate', 'settlementDate'];
+    const filledFields = conditionFields.filter(field => {
+      const value = formData[field];
+      return value && String(value).trim().length > 0;
+    });
+    
+    // If at least 2 out of 3 dates filled, show as complete
+    if (filledFields.length >= 2) return 'complete';
+    if (filledFields.length > 0) return 'partial';
+    return 'optional'; // Show as optional if nothing filled
+  }
+  
+  // Optional sections (no required fields)
   if (section.fields.length === 0) return 'optional';
   
-  const completedFields = section.fields.filter(field => 
-    formData[field] && String(formData[field]).trim()
-  );
+  // Standard handling for other sections
+  const completedFields = section.fields.filter(field => {
+    const value = formData[field];
+    return value && String(value).trim().length > 0;
+  });
   
   if (completedFields.length === section.fields.length) return 'complete';
   if (completedFields.length > 0) return 'partial';
   return 'empty';
 };
+
 
 // ==============================================================================
 // COMPONENTS
@@ -541,26 +636,34 @@ export default function App() {
     agentTitle: '',
     agentPhoto: '',
     propertyAddress: '',
-    buyerName1: '',
-    buyerName2: '',
-    buyerAddress: '',
-    buyerPhone: '',
-    buyerEmail: '',
+    buyers: [{
+      isEntity: false,
+      firstName: '',
+      middleName: '',
+      surname: '',
+      entityName: '',
+      abn: '',
+      acn: '',
+      email: '',
+      phone: '',
+      address: '',
+      signature: null,
+      signatureDate: new Date().toISOString().split('T')[0]
+    }],
     solicitorCompany: '',
     solicitorContact: '',
     solicitorEmail: '',
+    solicitorPhone: '',
     purchasePrice: '',
-    depositAmount: '',
-    depositTerms: 'Payable immediately (upon contract date)', // Enhanced default
+    initialDeposit: '',
+    balanceDeposit: '',
+    balanceDepositTerms: '',
     financeDate: '',
     financePreApproved: false,
+    waiverCoolingOff: false,
     inspectionDate: '',
     settlementDate: '',
-    specialConditions: '',
-    signature: null,
-    signature2: null,
-    signatureDate1: new Date().toISOString().split('T')[0],
-    signatureDate2: new Date().toISOString().split('T')[0]
+    specialConditions: ''
   });
 
   // UI State
@@ -571,6 +674,7 @@ export default function App() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [showAutoSave, setShowAutoSave] = useState(false);
+  const [activeBuyerTab, setActiveBuyerTab] = useState(0);
   
   // Data State
   const [isMapsLoaded, setIsMapsLoaded] = useState(false);
@@ -675,9 +779,16 @@ export default function App() {
 
         const qAgents = query(collection(dbRef.current, "agents"), orderBy("name"));
         const unsubAgents = onSnapshot(qAgents, (snap) => {
+          console.log('📊 Agents snapshot received');
+          console.log('Empty?', snap.empty);
+          console.log('Number of docs:', snap.docs.length);
+          
           if (!snap.empty) {
             const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            console.log('Loaded agents:', loaded);
             setAgentsList(loaded);
+          } else {
+            console.log('⚠️ Agents snapshot is EMPTY!');
           }
         });
 
@@ -710,13 +821,7 @@ export default function App() {
               setPlaceholders(newPlaceholders);
               setTempPlaceholders(newPlaceholders);
               
-              // Update formData with new deposit terms default if form is empty
-              setFormData(prev => ({
-                ...prev,
-                depositTerms: prev.depositTerms === DEFAULT_PLACEHOLDERS.depositTerms || !prev.depositTerms 
-                  ? newPlaceholders.depositTerms || DEFAULT_PLACEHOLDERS.depositTerms 
-                  : prev.depositTerms
-              }));
+              
             }
           } else {
             await setDoc(docRef, {
@@ -883,31 +988,15 @@ export default function App() {
       setFieldErrors(prev => { const n = { ...prev }; delete n[name]; return n; });
     }
     
-    if (name === 'purchasePrice' || name === 'depositAmount') {
+    if (name === 'purchasePrice' || name === 'initialDeposit' || name === 'balanceDeposit') {
       const newFormData = { ...formData, [name]: formatCurrency(value) };
       setFormData(newFormData);
       
-      // Smart deposit calculation when purchase price changes
-      if (name === 'purchasePrice' && placeholders.depositPercent) {
-        const result = calculateSmartDeposit(value, placeholders.depositPercent);
-        
+      // Smart balance deposit calculation when purchase price changes
+      if (name === 'purchasePrice' && placeholders.balanceDepositPercent) {
+        const result = calculateSmartDeposit(value, placeholders.balanceDepositPercent);
         if (result) {
-          // Auto-fill deposit amount
-          setFormData(prev => ({ ...prev, depositAmount: result.amount }));
-          
-          // Show the calculation text
-          const calculationElement = document.getElementById('deposit-calculation');
-          if (calculationElement) {
-            calculationElement.textContent = result.calculation;
-            calculationElement.style.opacity = '1';
-            
-            // Brief highlight animation
-            const depositField = document.querySelector('input[name="depositAmount"]');
-            if (depositField) {
-              depositField.classList.add('animate-pulse');
-              setTimeout(() => depositField.classList.remove('animate-pulse'), 1000);
-            }
-          }
+          setFormData(prev => ({ ...prev, balanceDeposit: result.amount }));
         }
       }
     } else {
@@ -930,31 +1019,118 @@ export default function App() {
     }));
   };
 
-  const handleSignatureEnd = (field, dataUrl) => {
-    if (fieldErrors[field]) {
-      setFieldErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
+  const handleBuyerChange = (buyerIndex, field, value) => {
+    setFormData(prev => {
+      const newBuyers = [...prev.buyers];
+      newBuyers[buyerIndex] = { ...newBuyers[buyerIndex], [field]: value };
+      return { ...prev, buyers: newBuyers };
+    });
+    
+    const errorKey = `buyer${buyerIndex}_${field}`;
+    if (fieldErrors[errorKey]) {
+      setFieldErrors(prev => { const n = { ...prev }; delete n[errorKey]; return n; });
     }
-    setFormData(prev => ({ ...prev, [field]: dataUrl }));
   };
 
-  const handleSignatureClear = (field) => setFormData(prev => ({ ...prev, [field]: null }));
+  const handleEntityToggle = (buyerIndex) => {
+    setFormData(prev => {
+      const newBuyers = [...prev.buyers];
+      newBuyers[buyerIndex] = { ...newBuyers[buyerIndex], isEntity: !newBuyers[buyerIndex].isEntity };
+      return { ...prev, buyers: newBuyers };
+    });
+  };
+
+  const addBuyer = () => {
+    setFormData(prev => ({
+      ...prev,
+      buyers: [...prev.buyers, {
+        isEntity: false,
+        firstName: '',
+        middleName: '',
+        surname: '',
+        entityName: '',
+        abn: '',
+        acn: '',
+        email: '',
+        phone: '',
+        address: '',
+        signature: null,
+        signatureDate: new Date().toISOString().split('T')[0]
+      }]
+    }));
+    setActiveBuyerTab(formData.buyers.length);
+  };
+
+  const removeBuyer = (buyerIndex) => {
+    if (formData.buyers.length === 1) {
+      alert("You must have at least one buyer.");
+      return;
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      buyers: prev.buyers.filter((_, i) => i !== buyerIndex)
+    }));
+    
+    if (activeBuyerTab >= formData.buyers.length - 1) {
+      setActiveBuyerTab(Math.max(0, buyerIndex - 1));
+    }
+  };
+
+  const handleSignatureEnd = (buyerIndex, dataUrl) => {
+    handleBuyerChange(buyerIndex, 'signature', dataUrl);
+    const errorKey = `buyer${buyerIndex}_signature`;
+    if (fieldErrors[errorKey]) {
+      setFieldErrors(prev => { const n = { ...prev }; delete n[errorKey]; return n; });
+    }
+  };
+
+  const handleSignatureClear = (buyerIndex) => {
+    handleBuyerChange(buyerIndex, 'signature', null);
+  };
   
   const handlePrint = () => {
     window.print();
+  };
+
+  const getBalanceDepositPlaceholder = () => {
+    if (placeholders.balanceDepositAmount) return placeholders.balanceDepositAmount;
+    if (placeholders.balanceDepositPercent) {
+      if (formData.purchasePrice) {
+        const calc = calculateDeposit(formData.purchasePrice, placeholders.balanceDepositPercent);
+        if (calc) return `${calc} (${placeholders.balanceDepositPercent}% of purchase price)`;
+      }
+      return `Enter purchase price to calculate ${placeholders.balanceDepositPercent}%`;
+    }
+    return '';
   };
 
   const validateForm = () => {
     const errors = {};
     if (!formData.agentName) errors.agentName = 'Selling Agent is required';
     if (!formData.propertyAddress) errors.propertyAddress = 'Property Address is required';
-    if (!formData.buyerName1) errors.buyerName1 = 'Buyer Name is required';
-    if (!formData.buyerAddress) errors.buyerAddress = 'Buyer Address is required';
-    if (!formData.buyerPhone) errors.buyerPhone = 'Buyer Phone is required';
-    if (!formData.buyerEmail) errors.buyerEmail = 'Buyer Email is required';
     if (!formData.purchasePrice) errors.purchasePrice = 'Purchase Price is required';
-    if (!formData.depositAmount) errors.depositAmount = 'Initial Deposit is required';
-    if (!formData.signature) errors.signature = 'Buyer 1 Signature is required';
-    if (formData.buyerName2 && !formData.signature2) errors.signature2 = 'Buyer 2 Signature is required';
+    if (!formData.initialDeposit) errors.initialDeposit = 'Initial Deposit is required';
+    if (!formData.balanceDeposit) errors.balanceDeposit = 'Balance Deposit is required';
+    if (!formData.solicitorEmail) errors.solicitorEmail = 'Solicitor Email is required';
+    if (!formData.solicitorPhone) errors.solicitorPhone = 'Solicitor Phone is required';
+    
+    // Validate buyers
+    formData.buyers.forEach((buyer, index) => {
+      if (buyer.isEntity) {
+        if (!buyer.entityName) errors[`buyer${index}_entityName`] = `Buyer ${index + 1} Entity Name is required`;
+        if (!buyer.abn) errors[`buyer${index}_abn`] = `Buyer ${index + 1} ABN is required`;
+        if (!buyer.acn) errors[`buyer${index}_acn`] = `Buyer ${index + 1} ACN is required`;
+      } else {
+        if (!buyer.firstName) errors[`buyer${index}_firstName`] = `Buyer ${index + 1} First Name is required`;
+        if (!buyer.surname) errors[`buyer${index}_surname`] = `Buyer ${index + 1} Surname is required`;
+      }
+      if (!buyer.email) errors[`buyer${index}_email`] = `Buyer ${index + 1} Email is required`;
+      if (!buyer.phone) errors[`buyer${index}_phone`] = `Buyer ${index + 1} Phone is required`;
+      if (!buyer.address) errors[`buyer${index}_address`] = `Buyer ${index + 1} Address is required`;
+      if (!buyer.signature) errors[`buyer${index}_signature`] = `Buyer ${index + 1} Signature is required`;
+    });
+    
     return errors;
   };
 
@@ -1001,14 +1177,23 @@ export default function App() {
     let pdfBase64 = null;
     try { pdfBase64 = await generatePDF(); } catch (e) { console.error('PDF Error:', e); }
     
+    
+    
+    // Calculate total deposit
+    const initialDepositNum = parseFloat(String(formData.initialDeposit).replace(/[^0-9.]/g, '')) || 0;
+    const balanceDepositNum = parseFloat(String(formData.balanceDeposit).replace(/[^0-9.]/g, '')) || 0;
+    const totalDeposit = initialDepositNum + balanceDepositNum;
+    
     const payload = {
       ...formData,
       logoUrl: logoUrl, 
       agentMobile: currentAgent?.mobile || formData.agentMobile || '',
       agentTitle: currentAgent?.title || formData.agentTitle || '',
-      depositAmount: formData.depositAmount, 
-      depositTerms: formData.depositTerms, 
-      financeDate: formData.financeDate, 
+      totalDeposit: totalDeposit.toLocaleString(),
+      initialDeposit: formData.initialDeposit,
+      balanceDeposit: formData.balanceDeposit,
+      balanceDepositTerms: formData.balanceDepositTerms,
+      financeDate: formData.financeDate,
       inspectionDate: formData.inspectionDate, 
       settlementDate: formData.settlementDate, 
       submittedAt: new Date().toISOString(),
@@ -1195,28 +1380,37 @@ export default function App() {
         agentTitle: '',
         agentPhoto: '',
         propertyAddress: '',
-        buyerName1: '',
-        buyerName2: '',
-        buyerAddress: '',
-        buyerPhone: '',
-        buyerEmail: '',
+        buyers: [{
+          isEntity: false,
+          firstName: '',
+          middleName: '',
+          surname: '',
+          entityName: '',
+          abn: '',
+          acn: '',
+          email: '',
+          phone: '',
+          address: '',
+          signature: null,
+          signatureDate: new Date().toISOString().split('T')[0]
+        }],
         solicitorCompany: '',
         solicitorContact: '',
         solicitorEmail: '',
+        solicitorPhone: '',
         purchasePrice: '',
-        depositAmount: '',
-        depositTerms: placeholders.depositTerms || 'Payable immediately (upon contract date)',
+        initialDeposit: '',
+        balanceDeposit: '',
+        balanceDepositTerms: placeholders.balanceDepositTerms || '',
         financeDate: '',
         financePreApproved: false,
+        waiverCoolingOff: false,
         inspectionDate: '',
         settlementDate: '',
-        specialConditions: '',
-        signature: null,
-        signature2: null,
-        signatureDate1: new Date().toISOString().split('T')[0],
-        signatureDate2: new Date().toISOString().split('T')[0]
+        specialConditions: ''
       });
       setFieldErrors({});
+      setActiveBuyerTab(0);
       clearDraft();
       
       // Clear signature canvases if they exist
@@ -1468,46 +1662,128 @@ export default function App() {
                     <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Type className="w-4 h-4" /> Form Placeholders</h3>
                     <p className="text-xs text-slate-500 mb-3">Leave empty for no placeholder.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-1">Purchase Price</label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                          <input type="text" value={tempPlaceholders.purchasePrice || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, purchasePrice: formatCurrency(e.target.value) }))} className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" placeholder="e.g. 1,500,000" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-1">Deposit Amount OR Percentage</label>
-                        <div className="flex gap-2">
-                          <div className="relative flex-1">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                            <input type="text" value={tempPlaceholders.depositAmount || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, depositAmount: formatCurrency(e.target.value), depositPercent: '' }))} className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" placeholder="e.g. 50,000" />
-                          </div>
-                          <div className="relative w-24">
-                            <input type="number" value={tempPlaceholders.depositPercent || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, depositPercent: e.target.value, depositAmount: '' }))} className="w-full border border-slate-300 rounded p-2 pr-6 text-sm" placeholder="%" min="0" max="100" />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-1">Deposit Terms</label>
-                        <input type="text" value={tempPlaceholders.depositTerms || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, depositTerms: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-1">Finance Date</label>
-                        <input type="text" value={tempPlaceholders.financeDate || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, financeDate: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-1">Building & Pest Inspection</label>
-                        <input type="text" value={tempPlaceholders.inspectionDate || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, inspectionDate: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-1">Settlement Date</label>
-                        <input type="text" value={tempPlaceholders.settlementDate || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, settlementDate: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="text-xs text-slate-500 block mb-1">Special Conditions</label>
-                        <input type="text" value={tempPlaceholders.specialConditions || ''} onChange={(e) => setTempPlaceholders(p => ({ ...p, specialConditions: e.target.value }))} className="w-full border border-slate-300 rounded p-2 text-sm" />
-                      </div>
+                     {/* Purchase Price */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Purchase Price (Default)</label>
+  <div className="relative">
+    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+    <input 
+      type="text" 
+      value={tempPlaceholders.purchasePrice || ''} 
+      onChange={(e) => setTempPlaceholders(p => ({ ...p, purchasePrice: formatCurrency(e.target.value) }))} 
+      className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" 
+      placeholder="e.g. 850,000"
+    />
+  </div>
+</div>
+
+{/* Initial Deposit */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Initial Deposit (Fixed Amount)</label>
+  <div className="relative">
+    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+    <input 
+      type="text" 
+      value={tempPlaceholders.initialDeposit || ''} 
+      onChange={(e) => setTempPlaceholders(p => ({ ...p, initialDeposit: formatCurrency(e.target.value) }))} 
+      className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" 
+      placeholder="e.g. 5,000"
+    />
+  </div>
+  <label className="text-xs text-slate-500 block mb-1 mt-2">Initial Deposit Terms</label>
+  <input 
+    type="text" 
+    value={tempPlaceholders.initialDepositTerms || ''} 
+    onChange={(e) => setTempPlaceholders(p => ({ ...p, initialDepositTerms: e.target.value }))} 
+    className="w-full border border-slate-300 rounded p-2 text-sm" 
+    placeholder="e.g. Payable immediately upon contract date"
+  />
+</div>
+
+{/* Balance Deposit */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Balance Deposit Amount OR Percentage</label>
+  <div className="flex gap-2">
+    <div className="relative flex-1">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+      <input 
+        type="text" 
+        value={tempPlaceholders.balanceDepositAmount || ''} 
+        onChange={(e) => setTempPlaceholders(p => ({ ...p, balanceDepositAmount: formatCurrency(e.target.value), balanceDepositPercent: '' }))} 
+        className="w-full border border-slate-300 rounded p-2 pl-7 text-sm" 
+        placeholder="e.g. 75,000"
+      />
+    </div>
+    <div className="relative w-24">
+      <input 
+        type="number" 
+        value={tempPlaceholders.balanceDepositPercent || ''} 
+        onChange={(e) => setTempPlaceholders(p => ({ ...p, balanceDepositPercent: e.target.value, balanceDepositAmount: '' }))} 
+        className="w-full border border-slate-300 rounded p-2 pr-6 text-sm" 
+        placeholder="e.g. 10"
+        min="0" 
+        max="100"
+      />
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+    </div>
+  </div>
+  <label className="text-xs text-slate-500 block mb-1 mt-2">Balance Deposit Terms</label>
+  <input 
+    type="text" 
+    value={tempPlaceholders.balanceDepositTerms || ''} 
+    onChange={(e) => setTempPlaceholders(p => ({ ...p, balanceDepositTerms: e.target.value }))} 
+    className="w-full border border-slate-300 rounded p-2 text-sm" 
+    placeholder="e.g. Payable when contract becomes unconditional"
+  />
+</div>
+
+{/* Finance Date */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Finance Date (Default)</label>
+  <input 
+    type="text" 
+    value={tempPlaceholders.financeDate || ''} 
+    onChange={(e) => setTempPlaceholders(p => ({ ...p, financeDate: e.target.value }))} 
+    className="w-full border border-slate-300 rounded p-2 text-sm" 
+    placeholder="e.g. 14 days from contract date"
+  />
+</div>
+
+{/* Inspection Date */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Inspection Date (Default)</label>
+  <input 
+    type="text" 
+    value={tempPlaceholders.inspectionDate || ''} 
+    onChange={(e) => setTempPlaceholders(p => ({ ...p, inspectionDate: e.target.value }))} 
+    className="w-full border border-slate-300 rounded p-2 text-sm" 
+    placeholder="e.g. 14 days from contract date"
+  />
+</div>
+
+{/* Settlement Date */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Settlement Date (Default)</label>
+  <input 
+    type="text" 
+    value={tempPlaceholders.settlementDate || ''} 
+    onChange={(e) => setTempPlaceholders(p => ({ ...p, settlementDate: e.target.value }))} 
+    className="w-full border border-slate-300 rounded p-2 text-sm" 
+    placeholder="e.g. 30 days from contract date"
+  />
+</div>
+
+{/* Special Conditions */}
+<div>
+  <label className="text-xs text-slate-500 block mb-1">Special Conditions (Default)</label>
+  <textarea 
+    value={tempPlaceholders.specialConditions || ''} 
+    onChange={(e) => setTempPlaceholders(p => ({ ...p, specialConditions: e.target.value }))} 
+    className="w-full border border-slate-300 rounded p-2 text-sm" 
+    placeholder="e.g. Subject to building and pest inspection"
+    rows="3"
+  />
+</div>
                     </div>
                   </div>
                   <button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-bold">Save Settings</button>
@@ -1654,8 +1930,8 @@ export default function App() {
 
           {/* RIGHT COLUMN: Document Title */}
           <div className="text-right">
-            <h2 className="text-lg sm:text-2xl font-bold uppercase text-slate-800">Offer to Purchase</h2>
-            <p className="text-xs sm:text-sm text-slate-500">Official Letter of Offer</p>
+            <h2 className="text-base sm:text-xl font-bold uppercase text-slate-800">Non-Binding Property Purchase</h2>
+            <p className="text-xs sm:text-sm text-slate-800 font-semibold">Letter of Offer</p>
           </div>
         </header>
 
@@ -1691,7 +1967,7 @@ export default function App() {
           {!isPrefilled && (
             <div id="section-agent" className={`bg-slate-50 p-4 rounded border mb-6 print:hidden scroll-mt-24 lg:scroll-mt-8 ${fieldErrors.agentName ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}>
               <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
-                <Users className="w-4 h-4" /> Select Selling Agent <span className="text-red-500">*</span>
+                <Users className="w-4 h-4" /> SELECT SELLING AGENT <span className="text-red-500">*</span>
               </label>
               <select 
                 className={`w-full border rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 ${fieldErrors.agentName ? 'border-red-500' : 'border-slate-300'}`} 
@@ -1707,35 +1983,291 @@ export default function App() {
           <SectionHeader icon={Building} title="Property Details" id="property" />
           <InputField label="Property Address" name="propertyAddress" value={formData.propertyAddress} onChange={handleChange} placeholder={isMapsLoaded && !mapsError ? "Start typing address..." : "e.g. 4D/238 The Esplanade"} className="w-full" required readOnly={isPrefilled} inputRef={addressInputRef} icon={isMapsLoaded && !mapsError ? MapPin : null} error={!!fieldErrors.propertyAddress} />
 
-          <SectionHeader icon={User} title="Buyer Details" id="buyer" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <InputField label="Buyer Full Name (1)" name="buyerName1" value={formData.buyerName1} onChange={handleChange} required error={!!fieldErrors.buyerName1} />
-            <InputField label="Buyer Full Name (2)" name="buyerName2" value={formData.buyerName2} onChange={handleChange} />
-            <InputField label="Current Postal Address" name="buyerAddress" value={formData.buyerAddress} onChange={handleChange} className="md:col-span-2" required error={!!fieldErrors.buyerAddress} />
-            <InputField label="Phone / Mobile" name="buyerPhone" value={formData.buyerPhone} onChange={handleChange} required error={!!fieldErrors.buyerPhone} />
-            <InputField label="Email Address" name="buyerEmail" type="email" value={formData.buyerEmail} onChange={handleChange} required error={!!fieldErrors.buyerEmail} />
-          </div>
 
-          <SectionHeader icon={FileText} title="Buyer's Solicitor" id="solicitor" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <InputField label="Company Name" name="solicitorCompany" value={formData.solicitorCompany} onChange={handleChange} placeholder="TBA if unknown" />
-            <InputField label="Contact Person" name="solicitorContact" value={formData.solicitorContact} onChange={handleChange} />
-            <InputField label="Email / Phone" name="solicitorEmail" value={formData.solicitorEmail} onChange={handleChange} className="md:col-span-2" />
-          </div>
+{/* NEW BUYER SECTION WITH TABS */}
+<div className="border-b-2 border-slate-800 pb-2 mb-4 mt-8 flex items-center justify-between scroll-mt-24 lg:scroll-mt-8" id="section-buyer">
+  <div className="flex items-center gap-2">
+    <User className="w-5 h-5 text-red-600" />
+    <h2 className="text-lg font-bold uppercase tracking-wider text-slate-800">Buyer Details</h2>
+  </div>
+  <button type="button" onClick={addBuyer} className="print:hidden flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold">
+    <Plus className="w-4 h-4" /> Add Buyer
+  </button>
+</div>
 
-          <SectionHeader icon={DollarSign} title="Price & Deposit" id="price" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <InputField label="Purchase Price Offer" name="purchasePrice" value={formData.purchasePrice} onChange={handleChange} placeholder={placeholders.purchasePrice || ''} required prefix="$" error={!!fieldErrors.purchasePrice} />
-            <div className="flex flex-col">
-              <InputField label="Initial Deposit" name="depositAmount" value={formData.depositAmount} onChange={handleChange} placeholder={getDepositPlaceholder()} prefix="$" required error={!!fieldErrors.depositAmount} />
-              {placeholders.depositPercent && (
-                <div id="deposit-calculation" className="text-xs text-slate-500 mt-1 opacity-0 transition-opacity">
-                  {placeholders.depositPercent}% of purchase price
-                </div>
-              )}
-            </div>
-            <InputField label="Deposit Terms" name="depositTerms" value={formData.depositTerms} onChange={handleChange} placeholder={placeholders.depositTerms || ''} />
-          </div>
+{/* Buyer Tabs */}
+<div className="print:hidden mb-4 flex gap-2 overflow-x-auto">
+  {formData.buyers.map((_, index) => (
+    <button
+      key={index}
+      type="button"
+      onClick={() => setActiveBuyerTab(index)}
+      className={`px-4 py-2 rounded-t text-sm font-bold whitespace-nowrap ${
+        activeBuyerTab === index 
+          ? 'bg-red-600 text-white' 
+          : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+      }`}
+    >
+      Buyer {index + 1}
+    </button>
+  ))}
+</div>
+
+{/* Buyer Content */}
+{formData.buyers.map((buyer, buyerIndex) => (
+  <div
+    key={buyerIndex}
+    className={`${buyerIndex === activeBuyerTab ? 'block' : 'hidden'} print:block bg-slate-50 p-6 rounded border border-slate-200 mb-6`}
+  >
+    {/* Entity Toggle */}
+    <div className="mb-6 p-4 bg-white rounded border border-slate-300">
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={buyer.isEntity}
+          onChange={() => handleEntityToggle(buyerIndex)}
+          className="w-5 h-5 text-red-600"
+        />
+        <span className="text-sm font-bold text-slate-700">Buying as Entity (Company/Trust)?</span>
+      </label>
+    </div>
+
+    {/* Individual Fields */}
+    {!buyer.isEntity && (
+      <div className="space-y-4">
+        <h3 className="text-sm font-bold text-slate-700 border-b border-slate-300 pb-2 mb-4">Individual Details</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <InputField
+            label="First Name"
+            name={`buyer${buyerIndex}_firstName`}
+            value={buyer.firstName}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'firstName', e.target.value)}
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_firstName`]}
+          />
+          <InputField
+            label="Middle Name"
+            name={`buyer${buyerIndex}_middleName`}
+            value={buyer.middleName}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'middleName', e.target.value)}
+          />
+          <InputField
+            label="Surname"
+            name={`buyer${buyerIndex}_surname`}
+            value={buyer.surname}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'surname', e.target.value)}
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_surname`]}
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InputField
+            label="Email"
+            name={`buyer${buyerIndex}_email`}
+            type="email"
+            value={buyer.email}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'email', e.target.value)}
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_email`]}
+          />
+          <InputField
+            label="Phone"
+            name={`buyer${buyerIndex}_phone`}
+            type="tel"
+            value={buyer.phone}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'phone', e.target.value)}
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_phone`]}
+          />
+        </div>
+        <InputField
+          label="Current Address"
+          name={`buyer${buyerIndex}_address`}
+          value={buyer.address}
+          onChange={(e) => handleBuyerChange(buyerIndex, 'address', e.target.value)}
+          required
+          error={!!fieldErrors[`buyer${buyerIndex}_address`]}
+        />
+      </div>
+    )}
+
+    {/* Entity Fields */}
+    {buyer.isEntity && (
+      <div className="space-y-4">
+        <h3 className="text-sm font-bold text-slate-700 border-b border-slate-300 pb-2 mb-4">Entity Details</h3>
+        <InputField
+          label="Entity Name"
+          name={`buyer${buyerIndex}_entityName`}
+          value={buyer.entityName}
+          onChange={(e) => handleBuyerChange(buyerIndex, 'entityName', e.target.value)}
+          placeholder="e.g. Smith Family Trust"
+          required
+          error={!!fieldErrors[`buyer${buyerIndex}_entityName`]}
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InputField
+            label="ABN"
+            name={`buyer${buyerIndex}_abn`}
+            value={buyer.abn}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'abn', e.target.value)}
+            placeholder="12 345 678 901"
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_abn`]}
+          />
+          <InputField
+            label="ACN"
+            name={`buyer${buyerIndex}_acn`}
+            value={buyer.acn}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'acn', e.target.value)}
+            placeholder="123 456 789"
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_acn`]}
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InputField
+            label="Contact Email"
+            name={`buyer${buyerIndex}_email`}
+            type="email"
+            value={buyer.email}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'email', e.target.value)}
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_email`]}
+          />
+          <InputField
+            label="Contact Phone"
+            name={`buyer${buyerIndex}_phone`}
+            type="tel"
+            value={buyer.phone}
+            onChange={(e) => handleBuyerChange(buyerIndex, 'phone', e.target.value)}
+            required
+            error={!!fieldErrors[`buyer${buyerIndex}_phone`]}
+          />
+        </div>
+        <InputField
+          label="Entity Address"
+          name={`buyer${buyerIndex}_address`}
+          value={buyer.address}
+          onChange={(e) => handleBuyerChange(buyerIndex, 'address', e.target.value)}
+          required
+          error={!!fieldErrors[`buyer${buyerIndex}_address`]}
+        />
+      </div>
+    )}
+
+    {/* Remove Buyer Button */}
+    {formData.buyers.length > 1 && (
+      <button
+        type="button"
+        onClick={() => removeBuyer(buyerIndex)}
+        className="print:hidden mt-4 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-bold flex items-center gap-2"
+      >
+        <Trash2 className="w-4 h-4" /> Remove Buyer {buyerIndex + 1}
+      </button>
+    )}
+  </div>
+))}
+
+
+<SectionHeader icon={Briefcase} title="Buyer's Solicitor" id="solicitor" />
+<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <InputField label="Company Name" name="solicitorCompany" value={formData.solicitorCompany} onChange={handleChange} placeholder="TBA if unknown" />
+  <InputField label="Contact Person" name="solicitorContact" value={formData.solicitorContact} onChange={handleChange} />
+  <InputField 
+    label="Email" 
+    name="solicitorEmail" 
+    type="email" 
+    value={formData.solicitorEmail} 
+    onChange={handleChange} 
+    required 
+    error={!!fieldErrors.solicitorEmail}
+  />
+  <InputField 
+    label="Phone" 
+    name="solicitorPhone" 
+    type="tel" 
+    value={formData.solicitorPhone} 
+    onChange={handleChange} 
+    required 
+    error={!!fieldErrors.solicitorPhone}
+  />
+</div>
+
+<SectionHeader icon={DollarSign} title="Price & Deposit" id="price" />
+
+<div className="mb-6">
+  <InputField 
+    label="Purchase Price Offer" 
+    name="purchasePrice" 
+    value={formData.purchasePrice} 
+    onChange={handleChange} 
+    placeholder={placeholders.purchasePrice || ''} 
+    required 
+    prefix="$" 
+    error={!!fieldErrors.purchasePrice} 
+  />
+</div>
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+  <div className="p-4 bg-green-50 border border-green-200 rounded">
+    <h3 className="font-bold text-green-800 mb-3 text-sm flex items-center gap-2">
+      <span>💵</span> Initial Deposit (Payable Immediately)
+    </h3>
+    <InputField
+      label="Amount"
+      name="initialDeposit"
+      value={formData.initialDeposit}
+      onChange={handleChange}
+      placeholder={placeholders.initialDeposit || ''}
+      prefix="$"
+      required
+      error={!!fieldErrors.initialDeposit}
+    />
+    <p className="text-xs text-slate-500 mt-2 italic">Payable immediately upon contract date</p>
+  </div>
+
+  <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+  <h3 className="font-bold text-blue-800 mb-3 text-sm flex items-center gap-2">
+    <span>💰</span> Balance Deposit (Upon Unconditional)
+  </h3>
+  <InputField
+    label="Amount"
+    name="balanceDeposit"
+    value={formData.balanceDeposit}
+    onChange={handleChange}
+    placeholder={getBalanceDepositPlaceholder()}
+    prefix="$"
+    required
+    error={!!fieldErrors.balanceDeposit}
+  />
+  <p className="text-xs text-slate-500 mt-2 mb-3 italic">
+    {placeholders.balanceDepositTerms || 'Payable when contract becomes unconditional'}
+  </p>
+  <InputField
+    label="Terms"
+    name="balanceDepositTerms"
+    value={formData.balanceDepositTerms}
+    onChange={handleChange}
+    placeholder="Special conditions (if any)"
+  />
+</div>
+</div>
+
+{(formData.initialDeposit || formData.balanceDeposit) && (
+  <div className="bg-slate-100 border border-slate-300 rounded p-4 mb-6">
+    <div className="flex justify-between items-center">
+      <span className="font-bold text-slate-700">Total Deposit:</span>
+      <span className="text-xl font-bold text-slate-900">
+        ${((parseFloat(String(formData.initialDeposit).replace(/[^0-9.]/g, '')) || 0) + 
+           (parseFloat(String(formData.balanceDeposit).replace(/[^0-9.]/g, '')) || 0)).toLocaleString()}
+      </span>
+    </div>
+    <p className="text-xs text-slate-500 mt-1">
+      Initial ${(parseFloat(String(formData.initialDeposit).replace(/[^0-9.]/g, '')) || 0).toLocaleString()} + 
+      Balance ${(parseFloat(String(formData.balanceDeposit).replace(/[^0-9.]/g, '')) || 0).toLocaleString()}
+    </p>
+  </div>
+)}
 
           <SectionHeader icon={Calendar} title="Conditions" id="conditions" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -1743,6 +2275,7 @@ export default function App() {
               <h3 className="font-bold text-slate-700 mb-3 text-sm">Finance</h3>
               <InputField label="Finance Date" name="financeDate" value={formData.financeDate} onChange={handleChange} placeholder={placeholders.financeDate || ''} className="mb-3" />
               <Checkbox label="Loan Pre-Approved?" name="financePreApproved" checked={formData.financePreApproved} onChange={handleChange} />
+              <Checkbox label="Waiver of Cooling Off Period" name="waiverCoolingOff" checked={formData.waiverCoolingOff} onChange={handleChange} />
             </div>
             <div className="p-4 bg-slate-50 border border-slate-200 rounded">
               <h3 className="font-bold text-slate-700 mb-3 text-sm">Building & Pest</h3>
@@ -1756,47 +2289,69 @@ export default function App() {
             <textarea name="specialConditions" value={formData.specialConditions} onChange={handleChange} rows={4} className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 transition-colors" placeholder={placeholders.specialConditions || ''}></textarea>
           </div>
 
-          <div id="section-signature" className="mt-12 mb-8 break-inside-avoid scroll-mt-24 lg:scroll-mt-8">
-            <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2 mb-4">
-              <div className="flex items-center gap-2"><PenTool className="w-5 h-5 text-red-600" /><h2 className="text-lg font-bold uppercase tracking-wider text-slate-800">Authorisation</h2></div>
-            </div>
-            <div className={`grid grid-cols-1 ${hasSecondBuyer ? 'md:grid-cols-2' : ''} gap-8`}>
-              <div className="flex flex-col h-full justify-between">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">{hasSecondBuyer ? 'Buyer 1 Signature' : 'Buyer Signature'} <span className="text-red-500">*</span></label>
-                  <div className="print:hidden">
-                    <EnhancedSignaturePad 
-                      signatureData={formData.signature} 
-                      onEnd={(data) => handleSignatureEnd('signature', data)} 
-                      onClear={() => handleSignatureClear('signature')} 
-                      error={!!fieldErrors.signature} 
-                      label="Tap or click here to sign"
-                    />
-                  </div>
-                  <div className="hidden print:block h-32 border-b border-slate-300 relative">{formData.signature && (<img src={formData.signature} alt="Signature 1" className="h-full object-contain absolute bottom-0 left-0" />)}</div>
-                </div>
-                <div className="mt-4"><InputField label="Date" name="signatureDate1" type="date" value={formData.signatureDate1} onChange={handleChange} /></div>
-              </div>
-              {hasSecondBuyer && (
-                <div className="flex flex-col h-full justify-between">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Buyer 2 Signature <span className="text-red-500">*</span></label>
-                    <div className="print:hidden">
-                      <EnhancedSignaturePad 
-                        signatureData={formData.signature2} 
-                        onEnd={(data) => handleSignatureEnd('signature2', data)} 
-                        onClear={() => handleSignatureClear('signature2')} 
-                        error={!!fieldErrors.signature2}
-                        label="Tap or click here to sign"
-                      />
-                    </div>
-                    <div className="hidden print:block h-32 border-b border-slate-300 relative">{formData.signature2 && (<img src={formData.signature2} alt="Signature 2" className="h-full object-contain absolute bottom-0 left-0" />)}</div>
-                  </div>
-                  <div className="mt-4"><InputField label="Date" name="signatureDate2" type="date" value={formData.signatureDate2} onChange={handleChange} /></div>
-                </div>
-              )}
-            </div>
+
+{/* DISCLAIMER SECTION */}
+<div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-6 mt-12 mb-8 print:bg-white print:border print:border-slate-300">
+  <div className="flex items-start gap-3">
+    <div className="bg-amber-100 p-2 rounded-full text-amber-600 flex-shrink-0 print:bg-slate-100 print:text-slate-600">
+      <AlertTriangle className="w-6 h-6" />
+    </div>
+    <div>
+      <h3 className="font-bold text-amber-900 text-lg mb-2 print:text-slate-800">Important Disclaimer</h3>
+      <p className="text-sm text-amber-800 leading-relaxed print:text-slate-700">
+        This Letter of Offer is <strong>non-binding</strong> and provided for negotiation and contract-preparation purposes only. 
+        It does not constitute a legally enforceable agreement, nor does it oblige either party to proceed with the purchase or 
+        sale of the property. A binding commitment will only arise upon execution of a formal Contract of Sale, signed and 
+        dated by both the Buyer and the Seller.
+      </p>
+    </div>
+  </div>
+</div>
+
+         {/* SIGNATURES SECTION */}
+<div id="section-signature" className="mt-12 mb-8 break-inside-avoid scroll-mt-24 lg:scroll-mt-8">
+  <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2 mb-4">
+    <div className="flex items-center gap-2">
+      <PenTool className="w-5 h-5 text-red-600" />
+      <h2 className="text-lg font-bold uppercase tracking-wider text-slate-800">Authorisation</h2>
+    </div>
+  </div>
+  
+  <div className={`grid grid-cols-1 ${formData.buyers.length > 1 ? 'md:grid-cols-2' : ''} gap-8`}>
+    {formData.buyers.map((buyer, index) => (
+      <div key={index} className="flex flex-col h-full justify-between">
+        <div>
+          <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">
+            Buyer {index + 1} Signature <span className="text-red-500">*</span>
+          </label>
+          <div className="print:hidden">
+            <EnhancedSignaturePad 
+              signatureData={buyer.signature} 
+              onEnd={(data) => handleSignatureEnd(index, data)} 
+              onClear={() => handleSignatureClear(index)} 
+              error={!!fieldErrors[`buyer${index}_signature`]} 
+              label="Tap or click here to sign"
+            />
           </div>
+          <div className="hidden print:block h-32 border-b border-slate-300 relative">
+            {buyer.signature && (
+              <img src={buyer.signature} alt={`Signature ${index + 1}`} className="h-full object-contain absolute bottom-0 left-0" />
+            )}
+          </div>
+        </div>
+        <div className="mt-4">
+          <InputField 
+            label="Date" 
+            name={`buyer${index}_signatureDate`} 
+            type="date" 
+            value={buyer.signatureDate} 
+            onChange={(e) => handleBuyerChange(index, 'signatureDate', e.target.value)} 
+          />
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
 
           <div className="mt-8 flex justify-end print:hidden">
             <button type="submit" disabled={isSubmitting} className={`flex items-center gap-2 px-8 py-3 rounded text-white font-bold tracking-wide shadow-lg ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 transform hover:-translate-y-0.5 transition-all'}`}>
