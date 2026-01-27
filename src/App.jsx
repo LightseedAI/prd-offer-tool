@@ -248,6 +248,20 @@ const getSectionStatus = (formData, section) => {
     return 'optional'; // Show as optional if nothing filled
   }
   
+  // Special handling for Solicitor section
+  if (section.id === 'solicitor') {
+    // If "to be advised" is checked, section is complete
+    if (formData.solicitorToBeAdvised) return 'complete';
+    
+    // Otherwise, check email and phone
+    const hasEmail = formData.solicitorEmail && formData.solicitorEmail.trim();
+    const hasPhone = formData.solicitorPhone && formData.solicitorPhone.trim();
+    
+    if (hasEmail && hasPhone) return 'complete';
+    if (hasEmail || hasPhone) return 'partial';
+    return 'empty';
+  }
+  
   // Optional sections (no required fields)
   if (section.fields.length === 0) return 'optional';
   
@@ -654,6 +668,7 @@ export default function App() {
     solicitorContact: '',
     solicitorEmail: '',
     solicitorPhone: '',
+    solicitorToBeAdvised: false,
     purchasePrice: '',
     initialDeposit: '',
     balanceDeposit: '',
@@ -1112,8 +1127,11 @@ export default function App() {
     if (!formData.purchasePrice) errors.purchasePrice = 'Purchase Price is required';
     if (!formData.initialDeposit) errors.initialDeposit = 'Initial Deposit is required';
     if (!formData.balanceDeposit) errors.balanceDeposit = 'Balance Deposit is required';
-    if (!formData.solicitorEmail) errors.solicitorEmail = 'Solicitor Email is required';
-    if (!formData.solicitorPhone) errors.solicitorPhone = 'Solicitor Phone is required';
+    // Solicitor validation - only required if NOT "to be advised"
+if (!formData.solicitorToBeAdvised) {
+  if (!formData.solicitorEmail) errors.solicitorEmail = 'Solicitor Email is required';
+  if (!formData.solicitorPhone) errors.solicitorPhone = 'Solicitor Phone is required';
+}
     
     // Validate buyers
     formData.buyers.forEach((buyer, index) => {
@@ -1398,6 +1416,7 @@ export default function App() {
         solicitorContact: '',
         solicitorEmail: '',
         solicitorPhone: '',
+        solicitorToBeAdvised: false,
         purchasePrice: '',
         initialDeposit: '',
         balanceDeposit: '',
@@ -2170,26 +2189,54 @@ export default function App() {
 
 
 <SectionHeader icon={Briefcase} title="Buyer's Solicitor" id="solicitor" />
+
+{/* Checkbox */}
+<div className="mb-4">
+  <Checkbox 
+    label="Solicitor: To Be Advised" 
+    name="solicitorToBeAdvised" 
+    checked={formData.solicitorToBeAdvised} 
+    onChange={handleChange}
+  />
+</div>
+
+{/* Solicitor Fields */}
 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-  <InputField label="Company Name" name="solicitorCompany" value={formData.solicitorCompany} onChange={handleChange} placeholder="TBA if unknown" />
-  <InputField label="Contact Person" name="solicitorContact" value={formData.solicitorContact} onChange={handleChange} />
+  <InputField 
+    label="Company Name" 
+    name="solicitorCompany" 
+    value={formData.solicitorCompany} 
+    onChange={handleChange}
+    error={!!fieldErrors.solicitorCompany}
+    disabled={formData.solicitorToBeAdvised}
+  />
+  <InputField 
+    label="Contact Person" 
+    name="solicitorContact" 
+    value={formData.solicitorContact} 
+    onChange={handleChange}
+    error={!!fieldErrors.solicitorContact}
+    disabled={formData.solicitorToBeAdvised}
+  />
   <InputField 
     label="Email" 
     name="solicitorEmail" 
-    type="email" 
+    type="email"
     value={formData.solicitorEmail} 
-    onChange={handleChange} 
-    required 
+    onChange={handleChange}
+    required={!formData.solicitorToBeAdvised}
     error={!!fieldErrors.solicitorEmail}
+    disabled={formData.solicitorToBeAdvised}
   />
   <InputField 
     label="Phone" 
     name="solicitorPhone" 
-    type="tel" 
+    type="tel"
     value={formData.solicitorPhone} 
-    onChange={handleChange} 
-    required 
+    onChange={handleChange}
+    required={!formData.solicitorToBeAdvised}
     error={!!fieldErrors.solicitorPhone}
+    disabled={formData.solicitorToBeAdvised}
   />
 </div>
 
