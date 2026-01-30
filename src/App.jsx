@@ -771,15 +771,15 @@ export default function App() {
     };
   }, [formData]);
 
-  // Load draft on component mount
+  // Load draft on component mount (skip for QR code forms)
   useEffect(() => {
-    if (!isPrefilled) {
+    if (!isPrefilled && !isQRCodeForm) {
       const draft = loadDraft();
       if (draft) {
         setFormData(prev => ({ ...prev, ...draft }));
       }
     }
-  }, [isPrefilled]);
+  }, [isPrefilled, isQRCodeForm]);
 
   // ==============================================================================
   // INITIALIZATION
